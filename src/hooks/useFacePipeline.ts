@@ -38,6 +38,7 @@ export function useFacePipeline() {
   const [progress, setProgress] = useState<PipelineProgress>(initialProgress);
   const [tagged, setTagged] = useState<TaggedDetection[]>([]);
   const [clusters, setClusters] = useState<ClusterSummary[]>([]);
+  const [imageIdsWithNoFaces, setImageIdsWithNoFaces] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
 
@@ -92,8 +93,11 @@ export function useFacePipeline() {
 
       const clusterOptions: ClusterOptions = getClusterOptions();
       const { tagged: newTagged, clusters: newClusters } = clusterDetections(detections, clusterOptions);
+      const imageIdsWithFaces = new Set(detections.map((d) => d.imageId));
+      const noFaceIds = files.map((f) => f.id).filter((id) => !imageIdsWithFaces.has(id));
       setTagged(newTagged);
       setClusters(newClusters);
+      setImageIdsWithNoFaces(noFaceIds);
       const names = new Map<number, string>();
       for (const c of newClusters) names.set(c.clusterId, c.name);
       setClusterNames(names);
@@ -109,6 +113,7 @@ export function useFacePipeline() {
     setProgress(initialProgress);
     setTagged([]);
     setClusters([]);
+    setImageIdsWithNoFaces([]);
     setClusterNames(new Map());
     setError(null);
   }, []);
@@ -242,6 +247,7 @@ export function useFacePipeline() {
     progress,
     tagged,
     clusters: clustersNormalized,
+    imageIdsWithNoFaces,
     error,
     modelsLoaded,
     runPipeline,

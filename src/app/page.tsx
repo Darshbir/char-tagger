@@ -26,6 +26,7 @@ export default function Home() {
     progress,
     tagged,
     clusters,
+    imageIdsWithNoFaces,
     error,
     runPipeline,
     reset,
@@ -56,6 +57,27 @@ export default function Home() {
     progress.phase === "embedding" ||
     progress.phase === "clustering";
   const showResults = progress.phase === "done" && clusters.length >= 0;
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Enter") return;
+      const active = document.activeElement;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          active.getAttribute("contenteditable") === "true")
+      )
+        return;
+      if (files.length > 0 && !isProcessing) {
+        e.preventDefault();
+        handleProcess();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [files.length, isProcessing, handleProcess]);
 
   return (
     <Layout>
@@ -162,11 +184,12 @@ export default function Home() {
         )}
 
         {showResults && (
-          <div className="mt-8 w-full max-w-4xl">
+          <div className="mt-8 w-full">
             <ClusterResults
               clusters={clusters}
               tagged={tagged}
               filesById={filesById}
+              imageIdsWithNoFaces={imageIdsWithNoFaces}
               onRename={setClusterName}
               onMerge={mergeClusters}
               onSplit={splitCluster}
