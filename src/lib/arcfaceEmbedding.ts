@@ -69,8 +69,8 @@ let sessionPromise: Promise<{
 async function loadSession() {
   const ort = await getOrt();
   const options = {
-    executionProviders: ["wasm"] as const,
-    graphOptimizationLevel: "all" as const,
+    executionProviders: ["wasm"] as string[],
+    graphOptimizationLevel: "all" as string,
   };
   try {
     return await ort.InferenceSession.create(ARCFACE_MODEL_CDN_URL, options);

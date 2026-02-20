@@ -33,6 +33,9 @@ export const DBSCAN_EPSILON_DEFAULT = 0.4;
 /** DBSCAN: min points to form a cluster (1 = single face can be its own cluster) */
 export const DBSCAN_MIN_POINTS_DEFAULT = 1;
 
+// Phase 3: Tag edit UX — cluster 0 is reserved for "Uncategorized"
+export const UNCATEGORIZED_CLUSTER_ID = 0;
+
 /** localStorage keys for user-tunable clustering */
 export const CLUSTER_METHOD_STORAGE_KEY = "char-tagger-cluster-method";
 export const DBSCAN_EPSILON_STORAGE_KEY = "char-tagger-dbscan-epsilon";

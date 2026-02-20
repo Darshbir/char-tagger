@@ -29,6 +29,10 @@ export default function Home() {
     error,
     runPipeline,
     reset,
+    setClusterName,
+    mergeClusters,
+    splitCluster,
+    assignDetectionsToCluster,
   } = useFacePipeline();
 
   const filesById = useMemo(() => {
@@ -163,6 +167,10 @@ export default function Home() {
               clusters={clusters}
               tagged={tagged}
               filesById={filesById}
+              onRename={setClusterName}
+              onMerge={mergeClusters}
+              onSplit={splitCluster}
+              onAssignToCluster={assignDetectionsToCluster}
             />
           </div>
         )}

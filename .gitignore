@@ -43,3 +43,6 @@ coverage
 
 # turbo (if used)
 .turbo
+
+# plan
+*.plan.md
