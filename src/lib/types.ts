@@ -6,6 +6,15 @@ export interface Bbox {
   height: number;
 }
 
+/** Raw detection (no embedding yet). eyeAngleRad = angle of eye line for alignment (horizontal = 0). */
+export interface RawDetection {
+  imageId: string;
+  detectionIndex: number;
+  bbox: Bbox;
+  /** Rotation in radians so eye line is horizontal; used when cropping for ArcFace. */
+  eyeAngleRad?: number;
+}
+
 /** One detected face: image, index, box, and 512-d ArcFace embedding (L2-normalized) */
 export interface DetectionWithEmbedding {
   imageId: string;

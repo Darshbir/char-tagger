@@ -1,13 +1,14 @@
 "use client";
 
-import type { Bbox } from "./types";
-import type { DetectionWithEmbedding } from "./types";
+import type { Bbox, RawDetection, DetectionWithEmbedding } from "./types";
 import {
   FACE_MODEL_BASE_URL,
   DETECTION_BATCH_SIZE,
   FACE_DETECT_SCORE_THRESHOLD,
+  type FaceDetectorType,
 } from "./constants";
 import { embedFace, getArcFaceSession } from "./arcfaceEmbedding";
+import { detectFacesRetinaFace, getRetinaFaceSession } from "./retinafaceDetector";
 
 export type PipelineProgressPhase =
   | "idle"
@@ -25,26 +26,26 @@ export interface PipelineProgressUpdate {
   message?: string;
 }
 
-/** Raw detection (no embedding yet) */
-export interface RawDetection {
-  imageId: string;
-  detectionIndex: number;
-  bbox: Bbox;
-}
+export type { RawDetection } from "./types";
 
-/** Load face-api models for detection only (no face recognition net). Call once before processing. */
-export async function loadFaceModels(
+/** Load detector models. Call once before processing. */
+export async function loadDetectorModels(
+  detector: FaceDetectorType,
   baseUrl: string = FACE_MODEL_BASE_URL
 ): Promise<void> {
-  const tf = await import("@tensorflow/tfjs");
-  await tf.setBackend("webgl");
-  await tf.ready();
+  if (detector === "face-api") {
+    const tf = await import("@tensorflow/tfjs");
+    await tf.setBackend("webgl");
+    await tf.ready();
 
-  const faceapi = await import("@vladmandic/face-api");
-  await Promise.all([
-    faceapi.nets.tinyFaceDetector.loadFromUri(baseUrl),
-    faceapi.nets.faceLandmark68TinyNet.loadFromUri(baseUrl),
-  ]);
+    const faceapi = await import("@vladmandic/face-api");
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(baseUrl),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(baseUrl),
+    ]);
+  } else {
+    await getRetinaFaceSession();
+  }
 }
 
 /** Create an HTMLImageElement from a File and wait for it to load */
@@ -68,8 +69,13 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
 /** Run face detection only (all faces) on one image. Returns raw detections, no embeddings. */
 export async function detectFacesInImage(
   imageId: string,
-  file: File
+  file: File,
+  detector: FaceDetectorType
 ): Promise<RawDetection[]> {
+  if (detector === "retinaface") {
+    return detectFacesRetinaFace(imageId, file);
+  }
+
   const faceapi = await import("@vladmandic/face-api");
   const img = await loadImageFromFile(file);
 
@@ -82,23 +88,39 @@ export async function detectFacesInImage(
     )
     .withFaceLandmarks(true);
 
-  return results.map((r, detectionIndex) => ({
-    imageId,
-    detectionIndex,
-    bbox: {
-      x: r.detection.box.x,
-      y: r.detection.box.y,
-      width: r.detection.box.width,
-      height: r.detection.box.height,
-    },
-  }));
+  return results.map((r, detectionIndex) => {
+    let eyeAngleRad: number | undefined;
+    if (r.landmarks) {
+      const leftEye = r.landmarks.getLeftEye();
+      const rightEye = r.landmarks.getRightEye();
+      if (leftEye.length && rightEye.length) {
+        const leftCx = leftEye.reduce((s, p) => s + p.x, 0) / leftEye.length;
+        const leftCy = leftEye.reduce((s, p) => s + p.y, 0) / leftEye.length;
+        const rightCx = rightEye.reduce((s, p) => s + p.x, 0) / rightEye.length;
+        const rightCy = rightEye.reduce((s, p) => s + p.y, 0) / rightEye.length;
+        eyeAngleRad = Math.atan2(rightCy - leftCy, rightCx - leftCx);
+      }
+    }
+    return {
+      imageId,
+      detectionIndex,
+      bbox: {
+        x: r.detection.box.x,
+        y: r.detection.box.y,
+        width: r.detection.box.width,
+        height: r.detection.box.height,
+      },
+      eyeAngleRad,
+    };
+  });
 }
 
-/** Run full pipeline: detection (face-api) then embedding (ArcFace). Returns 512-d embeddings. */
+/** Run full pipeline: detection then embedding (ArcFace). Returns 512-d embeddings. */
 export async function runDetectionPipeline(
   files: Array<{ id: string; file: File }>,
   onProgress: (update: PipelineProgressUpdate) => void,
-  batchSize: number = DETECTION_BATCH_SIZE
+  batchSize: number = DETECTION_BATCH_SIZE,
+  detector: FaceDetectorType = "retinaface"
 ): Promise<DetectionWithEmbedding[]> {
   const filesById = new Map<string, File>();
   for (const { id, file } of files) filesById.set(id, file);
@@ -117,7 +139,7 @@ export async function runDetectionPipeline(
         total: totalImages,
         message: `Processing image ${i + j + 1} of ${totalImages}…`,
       });
-      const dets = await detectFacesInImage(id, file);
+      const dets = await detectFacesInImage(id, file, detector);
       rawDetections.push(...dets);
     }
     await new Promise((r) => setTimeout(r, 0));
@@ -148,7 +170,7 @@ export async function runDetectionPipeline(
     const file = filesById.get(d.imageId);
     if (!file) continue;
     const img = await loadImageFromFile(file);
-    const embedding = await embedFace(img, d.bbox);
+    const embedding = await embedFace(img, d.bbox, d.eyeAngleRad);
     all.push({
       imageId: d.imageId,
       detectionIndex: d.detectionIndex,

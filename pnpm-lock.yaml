@@ -35,6 +35,9 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+      retinaface:
+        specifier: ^0.0.6
+        version: 0.0.6(onnxruntime-web@1.24.2)
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -1656,6 +1659,11 @@ packages:
     resolution: {integrity: sha512-3JmVl5hMGtJ3kMmB3zi3DL25KfkCEyy3Tw7Gmw7z5w8M9WlwoPFnIvwChzu1+cF3iaK3sp18hhPz8ANeimdJfA==}
     engines: {node: '>= 0.4'}
     hasBin: true
+
+  retinaface@0.0.6:
+    resolution: {integrity: sha512-MJ0EjJdwzeSjbkZmyG9LSC10mq1QyfT2Rmr066Pexd43N/VGkR913zfaaNZRJrWvU2hpC3p/BS157z9bk8QmAQ==}
+    peerDependencies:
+      onnxruntime-web: ^1.17.1
 
   reusify@1.1.0:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
@@ -3754,6 +3762,10 @@ snapshots:
       object-keys: 1.1.1
       path-parse: 1.0.7
       supports-preserve-symlinks-flag: 1.0.0
+
+  retinaface@0.0.6(onnxruntime-web@1.24.2):
+    dependencies:
+      onnxruntime-web: 1.24.2
 
   reusify@1.1.0: {}
 

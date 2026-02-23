@@ -8,18 +8,23 @@ import { useFacePipeline } from "@/hooks/useFacePipeline";
 import {
   getClusterOptions,
   setClusterOptions,
+  getDetectorOption,
+  setDetectorOption,
   type ClusterMethod,
 } from "@/lib/clustering";
+import type { FaceDetectorType } from "@/lib/constants";
 
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [clusterMethod, setClusterMethod] = useState<ClusterMethod>("dbscan");
   const [kmeansK, setKmeansK] = useState(5);
+  const [detector, setDetector] = useState<FaceDetectorType>("retinaface");
 
   useEffect(() => {
     const opts = getClusterOptions();
     setClusterMethod(opts.method);
     setKmeansK(opts.k ?? 5);
+    setDetector(getDetectorOption());
   }, []);
 
   const {
@@ -44,8 +49,8 @@ export default function Home() {
 
   const handleProcess = useCallback(() => {
     const payload = files.map((file, i) => ({ id: String(i), file }));
-    runPipeline(payload);
-  }, [files, runPipeline]);
+    runPipeline(payload, { detector });
+  }, [files, detector, runPipeline]);
 
   const handleReset = useCallback(() => {
     reset();
@@ -89,6 +94,26 @@ export default function Home() {
         </p>
 
         <div className="mb-4 w-full max-w-xl rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            Face detector
+          </p>
+          <div className="mb-4 flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2">
+              <span className="text-sm text-gray-600 dark:text-gray-400">Detector:</span>
+              <select
+                value={detector}
+                onChange={(e) => {
+                  const d = e.target.value as FaceDetectorType;
+                  setDetector(d);
+                  setDetectorOption(d);
+                }}
+                className="rounded border border-gray-300 bg-white px-2 py-1 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              >
+                <option value="face-api">Face-api.js (Tiny)</option>
+                <option value="retinaface">RetinaFace (ONNX)</option>
+              </select>
+            </label>
+          </div>
           <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
             Clustering
           </p>

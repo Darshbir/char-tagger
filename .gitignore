@@ -28,6 +28,7 @@ yarn-error.log*
 .cursor
 *.swp
 *.swo
+CLAUDE.md
 
 # OS
 .DS_Store

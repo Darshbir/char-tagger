@@ -53,7 +53,8 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-async function getOrt() {
+/** Get ONNX Runtime (shared by ArcFace and RetinaFace). */
+export async function getOrt() {
   if (typeof window !== "undefined" && window.ort) return window.ort;
   await loadScript(ONNX_CDN);
   if (!window.ort) throw new Error("ONNX Runtime failed to load");
@@ -92,10 +93,11 @@ export async function getArcFaceSession() {
   return getSessionPromise();
 }
 
-/** Crop face to 112x112 RGB float32 NHWC (batch, height, width, channels), normalized (img - 127.5) / 128. */
+/** Crop face to 112x112 RGB float32 NHWC (batch, height, width, channels), normalized (img - 127.5) / 128. If eyeAngleRad is set, rotate the crop so the eye line is horizontal. */
 function preprocessFace(
   source: HTMLImageElement | HTMLCanvasElement,
-  bbox: { x: number; y: number; width: number; height: number }
+  bbox: { x: number; y: number; width: number; height: number },
+  eyeAngleRad?: number
 ): Float32Array {
   const canvas = document.createElement("canvas");
   canvas.width = SIZE;
@@ -103,17 +105,23 @@ function preprocessFace(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not get canvas 2d context");
 
-  ctx.drawImage(
-    source,
-    bbox.x,
-    bbox.y,
-    bbox.width,
-    bbox.height,
-    0,
-    0,
-    SIZE,
-    SIZE
-  );
+  const w = bbox.width;
+  const h = bbox.height;
+
+  if (eyeAngleRad != null && Math.abs(eyeAngleRad) > 1e-6) {
+    const tmp = document.createElement("canvas");
+    tmp.width = w;
+    tmp.height = h;
+    const tctx = tmp.getContext("2d");
+    if (!tctx) throw new Error("Could not get canvas 2d context");
+    tctx.translate(w / 2, h / 2);
+    tctx.rotate(-eyeAngleRad);
+    tctx.translate(-w / 2, -h / 2);
+    tctx.drawImage(source, bbox.x, bbox.y, w, h, 0, 0, w, h);
+    ctx.drawImage(tmp, 0, 0, w, h, 0, 0, SIZE, SIZE);
+  } else {
+    ctx.drawImage(source, bbox.x, bbox.y, w, h, 0, 0, SIZE, SIZE);
+  }
 
   const imageData = ctx.getImageData(0, 0, SIZE, SIZE);
   const data = imageData.data;
@@ -144,14 +152,16 @@ function l2Normalize(arr: Float32Array): Float32Array {
  * Run ArcFace on a cropped face and return 512-d L2-normalized embedding.
  * @param source - Image or canvas containing the full picture
  * @param bbox - Face bounding box in source coordinates
+ * @param eyeAngleRad - Optional rotation (radians) so eye line is horizontal before crop
  */
 export async function embedFace(
   source: HTMLImageElement | HTMLCanvasElement,
-  bbox: { x: number; y: number; width: number; height: number }
+  bbox: { x: number; y: number; width: number; height: number },
+  eyeAngleRad?: number
 ): Promise<Float32Array> {
   const ort = await getOrt();
   const sess = await getArcFaceSession();
-  const inputTensor = preprocessFace(source, bbox);
+  const inputTensor = preprocessFace(source, bbox, eyeAngleRad);
 
   const inputName = sess.inputNames[0];
   if (!inputName) throw new Error("ArcFace model has no input");

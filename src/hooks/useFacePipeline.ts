@@ -3,8 +3,9 @@
 import { useCallback, useMemo, useState } from "react";
 import type { TaggedDetection, ClusterSummary, PipelineProgress } from "@/lib/types";
 import { detectionId } from "@/lib/types";
-import { loadFaceModels, runDetectionPipeline } from "@/lib/facePipeline";
+import { loadDetectorModels, runDetectionPipeline } from "@/lib/facePipeline";
 import type { PipelineProgressUpdate } from "@/lib/facePipeline";
+import type { FaceDetectorType } from "@/lib/constants";
 import { clusterDetections, getClusterOptions, type ClusterOptions } from "@/lib/clustering";
 import { UNCATEGORIZED_CLUSTER_ID } from "@/lib/constants";
 
@@ -46,13 +47,17 @@ export function useFacePipeline() {
   const [clusterNames, setClusterNames] = useState<Map<number, string>>(new Map());
 
   const runPipeline = useCallback(
-    async (files: Array<{ id: string; file: File }>) => {
+    async (
+      files: Array<{ id: string; file: File }>,
+      options?: { detector?: FaceDetectorType }
+    ) => {
       if (files.length === 0) return;
+      const detector = options?.detector ?? "retinaface";
       setError(null);
       setProgress({ phase: "loading", message: "Loading face detection and ArcFace models…" });
 
       try {
-        await loadFaceModels();
+        await loadDetectorModels(detector);
         setModelsLoaded(true);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to load models";
@@ -70,14 +75,19 @@ export function useFacePipeline() {
 
       let detections;
       try {
-        detections = await runDetectionPipeline(files, (update: PipelineProgressUpdate) => {
-          setProgress({
-            phase: update.phase,
-            current: update.current,
-            total: update.total,
-            message: update.message,
-          });
-        });
+        detections = await runDetectionPipeline(
+          files,
+          (update: PipelineProgressUpdate) => {
+            setProgress({
+              phase: update.phase,
+              current: update.current,
+              total: update.total,
+              message: update.message,
+            });
+          },
+          undefined,
+          detector
+        );
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Detection failed";
         setProgress({ phase: "error", message: msg });

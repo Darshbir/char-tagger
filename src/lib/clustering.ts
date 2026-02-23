@@ -11,6 +11,8 @@ import {
   DBSCAN_EPSILON_STORAGE_KEY,
   DBSCAN_MIN_POINTS_STORAGE_KEY,
   KMEANS_K_STORAGE_KEY,
+  DETECTOR_STORAGE_KEY,
+  type FaceDetectorType,
 } from "./constants";
 
 /** Cosine similarity between two L2-normalized vectors (dot product). Range [-1, 1]; we use [0, 1] for same-person. */
@@ -63,6 +65,16 @@ export function setClusterOptions(options: Partial<ClusterOptions>): void {
   if (options.epsilon !== undefined) localStorage.setItem(DBSCAN_EPSILON_STORAGE_KEY, String(options.epsilon));
   if (options.minPoints !== undefined) localStorage.setItem(DBSCAN_MIN_POINTS_STORAGE_KEY, String(options.minPoints));
   if (options.k !== undefined) localStorage.setItem(KMEANS_K_STORAGE_KEY, String(options.k));
+}
+
+export function getDetectorOption(): FaceDetectorType {
+  if (typeof window === "undefined") return "retinaface";
+  return localStorage.getItem(DETECTOR_STORAGE_KEY) === "face-api" ? "face-api" : "retinaface";
+}
+
+export function setDetectorOption(detector: FaceDetectorType): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(DETECTOR_STORAGE_KEY, detector);
 }
 
 /**

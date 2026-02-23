@@ -36,6 +36,19 @@ export const DBSCAN_MIN_POINTS_DEFAULT = 1;
 // Phase 3: Tag edit UX — cluster 0 is reserved for "Uncategorized"
 export const UNCATEGORIZED_CLUSTER_ID = 0;
 
+/** Face detector choice: face-api (Tiny) or RetinaFace (ONNX) */
+export type FaceDetectorType = "face-api" | "retinaface";
+
+/** localStorage key for selected face detector */
+export const DETECTOR_STORAGE_KEY = "char-tagger-detector";
+
+/** RetinaFace ONNX model URL (host under public/models/ or use CDN) */
+export const RETINAFACE_MODEL_CDN_URL =
+  typeof window !== "undefined"
+    ? "https://cdn.jsdelivr.net/gh/ShirasawaSama/retinaface-js@main/mnet.25_v2.onnx"
+    : "";
+export const RETINAFACE_MODEL_LOCAL_URL = "/models/retinaface.onnx";
+
 /** localStorage keys for user-tunable clustering */
 export const CLUSTER_METHOD_STORAGE_KEY = "char-tagger-cluster-method";
 export const DBSCAN_EPSILON_STORAGE_KEY = "char-tagger-dbscan-epsilon";
