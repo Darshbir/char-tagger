@@ -1,16 +1,33 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useState } from "react";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 
 export interface UploadZoneProps {
-  /** When provided, use controlled mode (files + onFilesChange). */
   files?: File[];
   onFilesChange?: (files: File[]) => void;
-  /** When true, show Process section is handled by parent; hide the "Processing in Phase 2" note. */
   showProcessHint?: boolean;
-  /** Optional slot for action buttons (e.g. Process) below the file list */
   actions?: React.ReactNode;
+}
+
+function FolderSVG() {
+  return (
+    <svg
+      width="36"
+      height="36"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="rgba(255,255,255,0.95)"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <line x1="12" y1="11" x2="12" y2="17" />
+      <line x1="9" y1="14" x2="15" y2="14" />
+    </svg>
+  );
 }
 
 export function UploadZone({
@@ -25,6 +42,7 @@ export function UploadZone({
 
   const isControlled = controlledFiles != null && onFilesChange != null;
   const files = isControlled ? controlledFiles : internalFiles;
+
   const setFiles = useCallback(
     (updater: File[] | ((prev: File[]) => File[])) => {
       const next = typeof updater === "function" ? updater(files) : updater;
@@ -37,8 +55,7 @@ export function UploadZone({
   const handleFiles = useCallback(
     (fileList: FileList | null) => {
       if (!fileList?.length) return;
-      const array = Array.from(fileList);
-      const images = array.filter((f) => f.type.startsWith("image/"));
+      const images = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
       setFiles((prev) => [...prev, ...images]);
     },
     [setFiles]
@@ -72,78 +89,108 @@ export function UploadZone({
   );
 
   const removeFile = useCallback(
-    (index: number) => {
-      setFiles((prev) => prev.filter((_, i) => i !== index));
-    },
+    (index: number) => setFiles((prev) => prev.filter((_, i) => i !== index)),
     [setFiles]
   );
 
   return (
-    <div className="w-full max-w-xl space-y-4">
-      <label
-        onDrop={onDrop}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-8 py-12 transition-colors ${
-          isDragging
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-            : "border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500"
-        }`}
-      >
+    <div
+      className={`tt-upload-card ${isDragging ? "tt-upload-card--drag" : ""}`}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+    >
+      {/* Icon */}
+      <div className="tt-up-icon">
+        <FolderSVG />
+      </div>
+
+      {/* Title + subtitle */}
+      <div className="tt-up-title">Drop your trip folder</div>
+      <div className="tt-up-sub">
+        Drag &amp; drop a folder of photos, or click below to browse.
+        <br />
+        Everything stays 100% in your browser.
+      </div>
+
+      {/* Hidden file input + trigger button */}
+      <label style={{ display: "block", position: "relative", zIndex: 1 }}>
         <input
           type="file"
           accept="image/*"
           multiple
           onChange={onInputChange}
-          className="hidden"
+          style={{ display: "none" }}
         />
-        <span className="mb-1 text-lg font-medium">Upload photos</span>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          Drag and drop or click to select images
+        <span
+          className="tt-btn-go"
+          style={{ cursor: "pointer" }}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+          }}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          Choose folder or photos
         </span>
       </label>
 
+      {/* File list */}
       {files.length > 0 && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <p className="mb-2 text-sm font-medium">
+        <div className="tt-file-list">
+          <div className="tt-file-count">
             {files.length} image{files.length !== 1 ? "s" : ""} selected
-          </p>
-          <ul className="flex flex-wrap gap-2">
+          </div>
+          <div className="tt-file-pills">
             {files.map((file, i) => (
-              <li
-                key={`${file.name}-${i}`}
-                className="flex items-center gap-2 rounded bg-gray-100 dark:bg-gray-800 px-2 py-1 text-sm"
-              >
+              <div key={`${file.name}-${i}`} className="tt-file-pill">
                 <button
                   type="button"
-                  onClick={() => setPreviewIndex(i)}
-                  className="truncate max-w-[180px] text-left hover:underline focus:underline"
-                  title={`View ${file.name}`}
+                  className="tt-file-pill-name"
+                  onClick={(e) => { e.stopPropagation(); setPreviewIndex(i); }}
+                  title={`Preview ${file.name}`}
                 >
                   {file.name}
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeFile(i);
-                  }}
-                  className="text-red-600 hover:text-red-700 dark:text-red-400"
+                  className="tt-file-pill-rm"
+                  onClick={(e) => { e.stopPropagation(); removeFile(i); }}
                   aria-label={`Remove ${file.name}`}
                 >
-                  ×
+                  Ã—
                 </button>
-              </li>
+              </div>
             ))}
-          </ul>
-          {showProcessHint && (
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Click Process below to detect and group faces.
+          </div>
+          {showProcessHint && files.length > 0 && (
+            <p style={{ marginTop: "0.4rem", fontSize: "0.65rem", color: "var(--text3)", fontFamily: "'DM Mono', monospace" }}>
+              â†“ Click &quot;Tag my trip&quot; below to start
             </p>
           )}
-          {actions != null && <div className="mt-3">{actions}</div>}
         </div>
       )}
+
+      {/* Action slot (Process button lives here) */}
+      {actions != null && (
+        <div style={{ marginTop: "0.85rem", position: "relative", zIndex: 1 }}>
+          {actions}
+        </div>
+      )}
+
+      {/* Privacy note */}
+      <div className="tt-pcode">
+        <span className="tt-cm">{'// Your photos never leave'}</span>
+        <br />
+        <span className="tt-cm">{'// this browser tab — ever'}</span>
+        <br />
+        <span style={{ color: "var(--green)" }}>âœ“ </span>No account required to start
+      </div>
 
       <ImagePreviewModal
         files={files}
