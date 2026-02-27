@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children, onLogoClick }: { children: React.ReactNode; onLogoClick?: () => void }) {
   const [isDark, setIsDark] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -25,9 +25,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: "100dvh", position: "relative" }}>
       <nav className="tt-nav">
-        <div className="tt-logo">
+        <button
+          type="button"
+          className="tt-logo tt-logo-btn"
+          onClick={onLogoClick}
+          aria-label="Go to home"
+        >
           Trip<em>Tag</em>
-        </div>
+        </button>
         <div className="tt-status-pill">
           <div className="tt-status-dot" />
           {/* lock icon */}

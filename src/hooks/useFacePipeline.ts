@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { TaggedDetection, ClusterSummary, PipelineProgress } from "@/lib/types";
 import { detectionId } from "@/lib/types";
 import { loadDetectorModels, runDetectionPipeline } from "@/lib/facePipeline";
@@ -45,6 +45,11 @@ export function useFacePipeline() {
 
   /** Persist custom cluster names across edit actions */
   const [clusterNames, setClusterNames] = useState<Map<number, string>>(new Map());
+
+  /** Pre-warm the default detector on mount so first run is faster */
+  useEffect(() => {
+    loadDetectorModels("retinaface").then(() => setModelsLoaded(true)).catch(() => { /* ignore pre-warm failures */ });
+  }, []);
 
   const runPipeline = useCallback(
     async (

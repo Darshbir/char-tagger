@@ -50,9 +50,11 @@ export function FaceThumbnail({ file, bbox, size = 64, alt = "", className = "" 
       ref={canvasRef}
       width={size}
       height={size}
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
       aria-label={alt || undefined}
       className={`rounded object-cover bg-gray-200 dark:bg-gray-700 ${className}`}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, display: "block", pointerEvents: "none" }}
     />
   );
 }

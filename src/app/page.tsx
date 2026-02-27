@@ -39,19 +39,19 @@ function IcoUser() { return <svg width="13" height="13" viewBox="0 0 24 24" fill
 function IcoShield() { return <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>; }
 function IcoEyeOff() { return <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>; }
 function IcoCheckDone() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12" /></svg>; }
-function IcoFaceSilhouette({ fill }: { fill?: string }) { return <svg width="54" height="54" viewBox="0 0 60 60" fill="none" aria-hidden><circle cx="30" cy="22" r="14" fill={fill ?? "var(--border2)"} /><path d="M5 56c0-13.807 11.193-25 25-25s25 11.193 25 25" fill={fill ?? "var(--border2)"} /></svg>; }
+function IcoFaceSilhouette({ fill }: { fill?: string }) { return <svg width="72" height="72" viewBox="0 0 60 60" fill="none" aria-hidden><circle cx="30" cy="22" r="14" fill={fill ?? "var(--border2)"} /><path d="M5 56c0-13.807 11.193-25 25-25s25 11.193 25 25" fill={fill ?? "var(--border2)"} /></svg>; }
 
 /* ── Fun facts ── */
 const FACTS = [
   { Icon: IcoCamera, text: "The first photograph ever taken required an 8-hour exposure back in 1826." },
-  { Icon: IcoEye, text: "Your eyes can distinguish around 10 million different colors — way more than any camera sensor." },
+  { Icon: IcoEye, text: "Your eyes can distinguish around 10 million different colors, far more than any camera sensor." },
   { Icon: IcoBolt, text: "Light travels at 299,792,458 m/s. Your camera captures it in a fraction of a millisecond." },
-  { Icon: IcoLock, text: "Every face embedding computed right now is a 512-dimensional vector — and it never leaves your device." },
+  { Icon: IcoLock, text: "Every face embedding computed right now is a 512-dimensional vector. It never leaves your device." },
   { Icon: IcoGlobe, text: "Photography comes from Greek: φῶς (light) + γράφω (write). Literally 'writing with light'." },
   { Icon: IcoCpu, text: "ArcFace, the model running in your browser, was trained on millions of faces and achieves 99%+ accuracy on LFW benchmark." },
   { Icon: IcoMap, text: "An average trip with friends generates 400–800 photos. TripTag sorts them all in under 30 seconds." },
   { Icon: IcoWifi, text: "WebAssembly runs at near-native speed. The entire ML pipeline runs inside this single browser tab." },
-  { Icon: IcoFilm, text: "Polaroid cameras were invented in 1948. Today your phone shoots 48 megapixels — in a device thinner than a Polaroid." },
+  { Icon: IcoFilm, text: "Polaroid cameras were invented in 1948. Today your phone shoots 48 megapixels, in a device thinner than a Polaroid." },
   { Icon: IcoLayers, text: "Cosine similarity between two face embeddings tells us how 'alike' two people are. Values above 0.6 typically indicate the same person." },
   { Icon: IcoMountain, text: "DBSCAN clustering was invented in 1996. It's fast, handles noise, and doesn't require you to guess how many people are in your photos." },
   { Icon: IcoSearch, text: "RetinaFace can detect faces rotated up to 90° and as small as 16×16 pixels in a 640×640 image." },
@@ -109,6 +109,60 @@ function fireConfetti() {
   }
 }
 
+/* ── How-It-Works side particle strip ── */
+function HowParticles() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const W = 64;
+    let H = canvas.parentElement?.offsetHeight ?? 400;
+    canvas.width = W;
+    canvas.height = H;
+
+    const ro = new ResizeObserver(() => {
+      H = canvas.parentElement?.offsetHeight ?? 400;
+      canvas.height = H;
+    });
+    if (canvas.parentElement) ro.observe(canvas.parentElement);
+
+    interface Pt { x: number; y: number; vy: number; r: number; alpha: number; hue: number; }
+    const pts: Pt[] = Array.from({ length: 28 }, () => ({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vy: -(0.28 + Math.random() * 0.42),
+      r: Math.random() * 3.5 + 1.2,
+      alpha: Math.random() * 0.55 + 0.18,
+      hue: Math.random() * 34 + 20,
+    }));
+
+    let raf = 0;
+    const draw = () => {
+      ctx.clearRect(0, 0, W, H);
+      for (const p of pts) {
+        p.y += p.vy;
+        if (p.y < -p.r * 2) { p.y = H + p.r; p.x = Math.random() * W; }
+        const fade = Math.min(1, p.y / 60) * Math.min(1, (H - p.y) / 60);
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.4);
+        grad.addColorStop(0, `hsla(${p.hue}, 80%, 65%, ${p.alpha * fade})`);
+        grad.addColorStop(1, `hsla(${p.hue}, 80%, 65%, 0)`);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * 2.4, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
+
+  return <canvas ref={canvasRef} className="tt-how-particles-canvas" aria-hidden />;
+}
+
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [clusterMethod, setClusterMethod] = useState<ClusterMethod>("dbscan");
@@ -121,6 +175,14 @@ export default function Home() {
   const stepStartTimeRef = useRef<number>(Date.now());
   const prevPhaseRef = useRef<string>("idle");
   const landingScreenRef = useRef<HTMLDivElement>(null);
+
+  /* Ensure upload screen is focusable so Enter key works immediately */
+  const uploadScreenRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showLanding && uploadScreenRef.current) {
+      uploadScreenRef.current.focus();
+    }
+  }, [showLanding]);
 
   useEffect(() => {
     const opts = getClusterOptions();
@@ -158,7 +220,7 @@ export default function Home() {
   const handleReset = useCallback(() => {
     confettiFiredRef.current = false;
     reset();
-    setShowLanding(true);
+    setShowLanding(false);
   }, [reset]);
 
   /* Track step start times for ETA */
@@ -183,7 +245,7 @@ export default function Home() {
         setFactIdx((i) => (i + 1) % FACTS.length);
         setFactFade(false);
       }, 420);
-    }, 4500);
+    }, 8000);
     return () => clearInterval(id);
   }, [progress.phase]);
 
@@ -231,6 +293,19 @@ export default function Home() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [files.length, progress.phase, handleProcess]);
 
+  /* Esc key → back to landing from upload screen */
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const phase = progress.phase;
+      const running = phase === "loading" || phase === "detecting" || phase === "embedding" || phase === "clustering";
+      const showUpload = !showLanding && !running && phase !== "done";
+      if (showUpload) setShowLanding(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showLanding, progress.phase]);
+
   const isProcessing =
     progress.phase === "loading" ||
     progress.phase === "detecting" ||
@@ -263,7 +338,7 @@ export default function Home() {
   const fact = FACTS[factIdx];
 
   return (
-    <Layout>
+    <Layout onLogoClick={() => { if (!showLanding) setShowLanding(true); }}>
       <ParticleBackground visible={showLanding} />
       {/* ------------------------------------------
           SCREEN 0 — LANDING
@@ -311,18 +386,6 @@ export default function Home() {
                     <div className="tt-stat-l">Your Device</div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="tt-btn-go tt-btn-go--lg"
-                  onClick={() => setShowLanding(false)}
-                >
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  Tag my trip photos
-                </button>
               </div>
 
               {/* RIGHT: polaroid strip + CTA card */}
@@ -359,10 +422,7 @@ export default function Home() {
                     className="tt-btn-go"
                     onClick={() => setShowLanding(false)}
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                    Try it free &mdash; no sign up
+                    Try it free, no sign up
                   </button>
                   <div className="tt-trust-row">
                     <div className="tt-trust-item"><IcoShield /> No uploads</div>
@@ -378,20 +438,25 @@ export default function Home() {
           <section className="tt-how tt-rev">
             <div className="tt-how-headline">How it <em>works</em></div>
             <p className="tt-how-sub">Four steps, entirely in your browser. No server ever sees your photos.</p>
-            <div className="tt-how-grid">
-              {([
-                { Icon: IcoDownload, step: "Step 1", title: "Upload photos", desc: "Drag your trip folder or select images. All data stays in-browser — nothing leaves this tab." },
-                { Icon: IcoScanFace, step: "Step 2", title: "Detect faces", desc: "RetinaFace ONNX model pinpoints every face across all your photos in seconds." },
-                { Icon: IcoLayers, step: "Step 3", title: "Create embeddings", desc: "ArcFace maps each face to a 512-dimensional vector that captures identity." },
-                { Icon: IcoSparkles, step: "Step 4", title: "Cluster people", desc: "DBSCAN groups similar embeddings automatically — no need to guess how many people." },
-              ] as const).map((card, i) => (
-                <div key={i} className="tt-how-card">
-                  <div className="tt-how-ico"><card.Icon /></div>
-                  <div className="tt-how-step">{card.step}</div>
-                  <div className="tt-how-title">{card.title}</div>
-                  <p className="tt-how-desc">{card.desc}</p>
-                </div>
-              ))}
+            <div className="tt-how-layout">
+              <div className="tt-how-particles-col">
+                <HowParticles />
+              </div>
+              <div className="tt-how-grid">
+                {([
+                  { Icon: IcoDownload, step: "Step 1", title: "Upload photos", desc: "Drag your trip folder or select images. All data stays in-browser, nothing leaves this tab." },
+                  { Icon: IcoScanFace, step: "Step 2", title: "Detect faces", desc: "RetinaFace ONNX model pinpoints every face across all your photos in seconds." },
+                  { Icon: IcoLayers, step: "Step 3", title: "Create embeddings", desc: "ArcFace maps each face to a 512-dimensional vector that captures identity." },
+                  { Icon: IcoSparkles, step: "Step 4", title: "Cluster people", desc: "DBSCAN groups similar embeddings automatically. No need to guess how many people." },
+                ] as const).map((card, i) => (
+                  <div key={i} className="tt-how-card">
+                    <div className="tt-how-ico"><card.Icon /></div>
+                    <div className="tt-how-step">{card.step}</div>
+                    <div className="tt-how-title">{card.title}</div>
+                    <p className="tt-how-desc">{card.desc}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
 
@@ -402,12 +467,12 @@ export default function Home() {
                 <div className="tt-priv-headline">Your photos <em>never</em><br />leave your device</div>
                 <p className="tt-priv-text">
                   Every byte of your data is processed right inside this browser tab. The ML models run entirely in
-                  WebAssembly &mdash; no server calls, no cloud storage, no fine print.
+                  WebAssembly. No server calls, no cloud storage, no fine print.
                 </p>
               </div>
               <div className="tt-priv-list">
                 {([
-                  { Icon: IcoBan, label: "Zero server calls", desc: "HTTP requests stop at model download. After that — silence." },
+                  { Icon: IcoBan, label: "Zero server calls", desc: "HTTP requests stop at model download. After that, silence." },
                   { Icon: IcoLock, label: "No persistent storage", desc: "Nothing written to disk, IndexedDB, or any server. Refresh and it's gone." },
                   { Icon: IcoEyeOff, label: "No tracking", desc: "No analytics, no telemetry, no third-party scripts phoning home." },
                   { Icon: IcoUser, label: "No account required", desc: "Open the page, drop photos, get results. That's it." },
@@ -427,7 +492,15 @@ export default function Home() {
           {/* ── FOOTER ── */}
           <footer className="tt-footer tt-rev">
             <div className="tt-footer-logo">Trip<em>Tag</em></div>
-            <div className="tt-footer-note">Privacy-first &middot; On-device AI &middot; 0 server calls</div>
+            <div className="tt-footer-love">Made with love by people who care about your privacy</div>
+            <a
+              href="https://buymeacoffee.com/darshbir"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tt-footer-link tt-footer-coffee"
+            >
+              ☕ Buy me a coffee
+            </a>
           </footer>
         </div>
       </div>
@@ -435,7 +508,7 @@ export default function Home() {
       {/* ------------------------------------------
           SCREEN 1 � UPLOAD
       ------------------------------------------ */}
-      <div className={`tt-screen tt-screen--upload ${!showUpload ? "tt-screen--hidden" : ""}`}>
+      <div ref={uploadScreenRef} tabIndex={-1} className={`tt-screen tt-screen--upload ${!showUpload ? "tt-screen--hidden" : ""}`} style={{ outline: "none" }}>
         <div className="tt-upload-solo">
           <button
             type="button"
@@ -544,7 +617,7 @@ export default function Home() {
               Processing your <em>memories</em>
             </div>
             <div className="tt-proc-sub">
-              All computation is happening right here in your tab — zero bytes uploaded.
+              All computation is happening right here in your tab. Zero bytes uploaded.
             </div>
           </div>
 

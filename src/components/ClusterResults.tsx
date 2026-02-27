@@ -47,7 +47,7 @@ function DragHandleIcon() {
 
 function SmallDragIcon() {
   return (
-    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <circle cx="9" cy="5" r="2.2" />
       <circle cx="9" cy="12" r="2.2" />
       <circle cx="9" cy="19" r="2.2" />
@@ -85,7 +85,7 @@ export function ClusterResults({
   const [editingNameId, setEditingNameId] = useState<number | null>(null);
   const [dragOverClusterId, setDragOverClusterId] = useState<number | null>(null);
   const [dragSourceClusterId, setDragSourceClusterId] = useState<number | null>(null);
-  const [dragOverCreateNewSide, setDragOverCreateNewSide] = useState<"left" | "right" | null>(null);
+  const [dragOverCreateNewSide, setDragOverCreateNewSide] = useState<"left" | "right" | "bottom" | null>(null);
   const [dragSourceClusterIdForCard, setDragSourceClusterIdForCard] = useState<number | null>(null);
   const [dragOverClusterIdForCard, setDragOverClusterIdForCard] = useState<number | null>(null);
   const dragScrollLastRef = useRef(0);
@@ -194,7 +194,7 @@ export function ClusterResults({
     [dragSourceClusterId]
   );
 
-  const handleDragOverCreateNew = useCallback((e: React.DragEvent, side: "left" | "right") => {
+  const handleDragOverCreateNew = useCallback((e: React.DragEvent, side: "left" | "right" | "bottom") => {
     e.preventDefault();
     if (e.dataTransfer.types.includes(DRAG_TYPE)) {
       e.dataTransfer.dropEffect = "move";
@@ -321,7 +321,6 @@ export function ClusterResults({
         {/* Persons grid */}
         <div
           className="tt-persons-grid"
-          style={anyDraggingFace ? { paddingLeft: "max(70px, calc((100% - 900px) / 2))", paddingRight: "max(70px, calc((100% - 900px) / 2))" } : undefined}
         >
           {namedClusters.map((cluster) => {
             const detections = cluster.detectionIds
@@ -340,13 +339,17 @@ export function ClusterResults({
               (isEditable && onMerge && dragOverClusterIdForCard === cluster.clusterId);
             const canMerge = isEditable && onMerge && otherClusters.length > 0;
 
-            // 2×3 mosaic: show up to 5 faces initially; 6th slot is +N expansion trigger
-            const MOSAIC_INIT = 5;
+            // Show up to 6 faces; +N slot only appears when total > 6
+            const MOSAIC_SHOW = 6;
             const expandCount = expandCountMap.get(cluster.clusterId) ?? 0;
-            const totalShown = Math.min(MOSAIC_INIT + expandCount, detections.length);
-            const shownDetections = detections.slice(0, totalShown);
-            const hasMore = totalShown < detections.length;
-            const remainingCount = detections.length - totalShown;
+            const needsTruncation = detections.length > MOSAIC_SHOW;
+            // When truncating: show 5 faces + 1 "+N" button; expand adds 20 at a time
+            const shownCount = needsTruncation
+              ? Math.min(5 + expandCount * 20, detections.length)
+              : detections.length;
+            const shownDetections = detections.slice(0, shownCount);
+            const hasMore = needsTruncation && shownCount < detections.length;
+            const remainingCount = detections.length - shownCount;
             const isExpanded = expandCount > 0;
 
             return (
@@ -359,21 +362,6 @@ export function ClusterResults({
               >
                 {/* Mosaic header */}
                 <div className="tt-pcard-mosaic">
-                  {/* Drag handle (top-left) — drags the entire card */}
-                  {canMerge && (
-                    <div
-                      className="tt-pcard-drag-handle"
-                      draggable
-                      onDragStart={(e) => handleClusterCardDragStart(e, cluster.clusterId)}
-                      onDragEnd={handleClusterCardDragEnd}
-                      title={cluster.name}
-                    >
-                      <DragHandleIcon />
-                    </div>
-                  )}
-
-                  {/* Face count badge */}
-                  <div className="tt-pcard-count-badge">{detections.length} face{detections.length !== 1 ? "s" : ""}</div>
 
                   {/* Dynamic mosaic cells — one per shown detection */}
                   {shownDetections.map((det) =>
@@ -394,7 +382,7 @@ export function ClusterResults({
                       </div>
                     )
                   )}
-                  {/* +N expansion trigger cell */}
+                  {/* +N expansion trigger cell — only when >6 faces */}
                   {hasMore && (
                     <div className="tt-mosaic-cell">
                       <button
@@ -402,7 +390,7 @@ export function ClusterResults({
                         className="tt-mosaic-more-btn"
                         onClick={() => setExpandCountMap((m) => {
                           const n = new Map(m);
-                          n.set(cluster.clusterId, Math.min((m.get(cluster.clusterId) ?? 0) + 20, detections.length - MOSAIC_INIT));
+                          n.set(cluster.clusterId, (m.get(cluster.clusterId) ?? 0) + 1);
                           return n;
                         })}
                         title="Show more faces"
@@ -448,6 +436,30 @@ export function ClusterResults({
                       />
                     ) : (
                       <>
+                        {/* Inline drag handle — shows name as ghost when dragging */}
+                        {canMerge && (
+                          <div
+                            className="tt-pcard-drag-handle-inline"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("application/x-char-tagger-cluster", String(cluster.clusterId));
+                              e.dataTransfer.effectAllowed = "move";
+                              const ghost = document.createElement("div");
+                              ghost.textContent = cluster.name;
+                              ghost.style.cssText = "position:fixed;top:-9999px;left:-9999px;padding:6px 16px;background:var(--surface,#1a1a1a);color:var(--text,#fff);border:1px solid var(--border);border-radius:10px;font-size:0.9rem;font-family:'Playfair Display',serif;white-space:nowrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.3);";
+                              document.body.appendChild(ghost);
+                              e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, 20);
+                              setTimeout(() => ghost.remove(), 0);
+                              setDragSourceClusterIdForCard(cluster.clusterId);
+                              setDragSourceClusterId(null);
+                              setDragOverCreateNewSide(null);
+                            }}
+                            onDragEnd={handleClusterCardDragEnd}
+                            title={`Drag to merge ${cluster.name}`}
+                          >
+                            <SmallDragIcon />
+                          </div>
+                        )}
                         <span
                           className="tt-pcard-name-display"
                           title={cluster.name}
@@ -474,7 +486,7 @@ export function ClusterResults({
 
                   {/* Meta */}
                   <div className="tt-pcard-meta">
-                    {detections.length} face{detections.length !== 1 ? "s" : ""} detected
+                    {detections.length} photo{detections.length !== 1 ? "s" : ""}
                   </div>
 
                   {/* Actions */}
@@ -518,6 +530,23 @@ export function ClusterResults({
             );
           })}
         </div>
+
+        {/* Bottom create-new drop zone */}
+        {isEditable && onSplit && (
+          <div
+            className={`tt-create-zone tt-create-zone--bottom ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "bottom" ? "tt-create-zone--hover" : ""}`}
+            style={{ pointerEvents: anyDraggingFace ? "auto" : "none" }}
+            onDragOver={(e) => handleDragOverCreateNew(e, "bottom")}
+            onDragLeave={handleDragLeaveCreateNew}
+            onDrop={handleDropCreateNew}
+          >
+            {anyDraggingFace && (
+              <span className="tt-create-zone-label">
+                {dragOverCreateNewSide === "bottom" ? "Create new person" : "Drop here to split into new person"}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Uncategorized section ── */}
@@ -543,11 +572,10 @@ export function ClusterResults({
 
         return (
           <div
-            className="tt-unid-section"
-            onDragOver={uncatCluster ? (e) => handleDragOver(e, UNCATEGORIZED_CLUSTER_ID) : undefined}
-            onDragLeave={uncatCluster ? handleDragLeave : undefined}
-            onDrop={uncatCluster ? (e) => handleDrop(e, UNCATEGORIZED_CLUSTER_ID) : undefined}
-            style={isUncatDrop ? { borderTopColor: "var(--accent3)" } : undefined}
+          className={`tt-unid-section${isUncatDrop ? " tt-unid-section--drop" : ""}`}
+          onDragOver={uncatCluster ? (e) => handleDragOver(e, UNCATEGORIZED_CLUSTER_ID) : undefined}
+          onDragLeave={uncatCluster ? handleDragLeave : undefined}
+          onDrop={uncatCluster ? (e) => handleDrop(e, UNCATEGORIZED_CLUSTER_ID) : undefined}
           >
             <div className="tt-unid-title">
               Uncategorized
@@ -567,10 +595,10 @@ export function ClusterResults({
                       onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
                       style={{ width: "100%", height: "100%", cursor: "grab" }}
                     >
-                      <FaceThumbnail file={file} bbox={bbox} size={48} alt="Uncategorized face" className="w-full h-full object-cover" />
+                      <FaceThumbnail file={file} bbox={bbox} size={72} alt="Uncategorized face" className="w-full h-full object-cover" />
                     </div>
                   ) : (
-                    <FaceThumbnail file={file} bbox={bbox} size={48} alt="Uncategorized face" className="w-full h-full object-cover" />
+                    <FaceThumbnail file={file} bbox={bbox} size={72} alt="Uncategorized face" className="w-full h-full object-cover" />
                   )}
                 </div>
               ))}

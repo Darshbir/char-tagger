@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 
 export interface UploadZoneProps {
@@ -39,6 +39,7 @@ export function UploadZone({
   const [internalFiles, setInternalFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isControlled = controlledFiles != null && onFilesChange != null;
   const files = isControlled ? controlledFiles : internalFiles;
@@ -99,6 +100,13 @@ export function UploadZone({
       onDrop={onDrop}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
+      onClick={(e) => {
+        // Open file picker when clicking anywhere on the card except interactive children
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, .tt-file-pill, span[role="button"]')) return;
+        fileInputRef.current?.click();
+      }}
+      style={{ cursor: "pointer" }}
     >
       {/* Icon */}
       <div className="tt-up-icon">
@@ -113,29 +121,27 @@ export function UploadZone({
         Everything stays 100% in your browser.
       </div>
 
-      {/* Hidden file input + trigger button */}
-      <label style={{ display: "block", position: "relative", zIndex: 1 }}>
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={onInputChange}
-          style={{ display: "none" }}
-        />
-        <span
-          className="tt-btn-go"
-          style={{ cursor: "pointer" }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            // Only open file picker if this span is the explicitly-focused element.
-            // This prevents the global page-level Enter→Process shortcut from also
-            // triggering the file picker when files are already selected.
-            if (e.key !== "Enter" && e.key !== " ") return;
-            if (e.currentTarget !== document.activeElement) return;
-            (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
-          }}
-        >
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={onInputChange}
+        style={{ display: "none" }}
+      />
+
+      {/* Trigger button (also clickable via whole-card click above) */}
+      <span
+        className="tt-btn-go"
+        style={{ cursor: "pointer" }}
+        role="button"
+        tabIndex={-1}
+        onClick={(e) => {
+          e.stopPropagation();
+          fileInputRef.current?.click();
+        }}
+      >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
             <circle cx="8.5" cy="8.5" r="1.5" />
@@ -143,7 +149,6 @@ export function UploadZone({
           </svg>
           Choose folder or photos
         </span>
-      </label>
 
       {/* File list */}
       {files.length > 0 && (
