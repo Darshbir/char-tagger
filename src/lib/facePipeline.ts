@@ -177,7 +177,8 @@ export async function runDetectionPipeline(
       bbox: d.bbox,
       embedding,
     });
-    await new Promise((r) => setTimeout(r, 0));
+    // Yield to the browser compositor so progress animations stay smooth
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
   }
 
   return all;

@@ -153,8 +153,15 @@ export function UploadZone({
       {/* File list */}
       {files.length > 0 && (
         <div className="tt-file-list">
-          <div className="tt-file-count">
-            {files.length} image{files.length !== 1 ? "s" : ""} selected
+          <div className="tt-file-count" style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <span>{files.length} image{files.length !== 1 ? "s" : ""} selected</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setFiles([]); }}
+              style={{ fontSize: "0.72rem", color: "var(--error, #e05050)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0, fontFamily: "'DM Mono', monospace" }}
+            >
+              Clear all
+            </button>
           </div>
           <div className="tt-file-pills">
             {files.map((file, i) => (

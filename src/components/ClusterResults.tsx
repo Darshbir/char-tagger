@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import type { ClusterSummary, TaggedDetection } from "@/lib/types";
 import { UNCATEGORIZED_CLUSTER_ID } from "@/lib/constants";
 import { FaceThumbnail } from "./FaceThumbnail";
 import { FullImageThumbnail } from "./FullImageThumbnail";
+import { useTouchDrag } from "@/hooks/useTouchDrag";
 
 const DRAG_TYPE = "application/x-char-tagger-detection";
 const DRAG_TYPE_CLUSTER = "application/x-char-tagger-cluster";
+const IMAGE_DRAG_TYPE = "application/x-char-tagger-image";
 
 const DRAG_SCROLL_EDGE_THRESHOLD = 80;
 const DRAG_SCROLL_SPEED = 14;
@@ -69,7 +71,7 @@ interface ClusterResultsProps {
   onAssignToCluster?: (detectionIds: string[], targetClusterId: number) => void;
 }
 
-export function ClusterResults({
+export const ClusterResults = memo(function ClusterResults({
   clusters,
   tagged,
   filesById,
@@ -79,16 +81,34 @@ export function ClusterResults({
   onSplit,
   onAssignToCluster,
 }: ClusterResultsProps) {
-  const taggedByKey = new Map<string, TaggedDetection>();
-  for (const t of tagged) taggedByKey.set(`${t.imageId}#${t.detectionIndex}`, t);
+  const taggedByKey = useMemo(() => {
+    const m = new Map<string, TaggedDetection>();
+    for (const t of tagged) m.set(`${t.imageId}#${t.detectionIndex}`, t);
+    return m;
+  }, [tagged]);
 
   const [editingNameId, setEditingNameId] = useState<number | null>(null);
+  const [duplicateWarnId, setDuplicateWarnId] = useState<number | null>(null);
   const [dragOverClusterId, setDragOverClusterId] = useState<number | null>(null);
   const [dragSourceClusterId, setDragSourceClusterId] = useState<number | null>(null);
-  const [dragOverCreateNewSide, setDragOverCreateNewSide] = useState<"left" | "right" | "bottom" | null>(null);
+  const [dragOverCreateNewSide, setDragOverCreateNewSide] = useState<"left" | "right" | "uncategorized" | null>(null);
   const [dragSourceClusterIdForCard, setDragSourceClusterIdForCard] = useState<number | null>(null);
   const [dragOverClusterIdForCard, setDragOverClusterIdForCard] = useState<number | null>(null);
+  // Full-image (no-face) manual assignment — local UI state only
+  const [imageClusterMap, setImageClusterMap] = useState<Map<string, number>>(new Map());
+  const [imageDragSrcId, setImageDragSrcId] = useState<string | null>(null);
   const dragScrollLastRef = useRef(0);
+
+  const {
+    isTouchDraggingFace,
+    isTouchDraggingCard,
+    touchDragFaceId,
+    touchDragCardId,
+    touchDragOverClusterId: touchOverClusterId,
+    touchDragOverCreateNew: touchOverCreateNew,
+    makeFaceTouchHandlers,
+    makeCardTouchHandlers,
+  } = useTouchDrag({ onAssignToCluster, onMerge, onSplit });
 
   // Stagger appear animation
   const [appearedSet, setAppearedSet] = useState<Set<number>>(new Set());
@@ -132,10 +152,20 @@ export function ClusterResults({
   const handleRenameSubmit = useCallback(
     (clusterId: number, value: string) => {
       const trimmed = value.trim();
-      if (trimmed && onRename) onRename(clusterId, trimmed);
+      if (trimmed && onRename) {
+        // Warn if another cluster already uses this name, but allow it
+        const isDuplicate = clusters.some(
+          (c) => c.clusterId !== clusterId && c.name.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (isDuplicate) {
+          setDuplicateWarnId(clusterId);
+          setTimeout(() => setDuplicateWarnId(null), 3000);
+        }
+        onRename(clusterId, trimmed);
+      }
       setEditingNameId(null);
     },
-    [onRename]
+    [onRename, clusters]
   );
 
   const handleAssignToUncategorized = useCallback(
@@ -181,6 +211,20 @@ export function ClusterResults({
     [onSplit]
   );
 
+  // Bottom zone — sends face to Uncategorized instead of creating a new character
+  const handleDropToUncategorized = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOverCreateNewSide(null);
+      setDragOverClusterId(null);
+      setDragSourceClusterId(null);
+      const data = getDragData(e);
+      if (!data || !onAssignToCluster || data.sourceClusterId === UNCATEGORIZED_CLUSTER_ID) return;
+      onAssignToCluster([data.detectionId], UNCATEGORIZED_CLUSTER_ID);
+    },
+    [onAssignToCluster]
+  );
+
   const handleDragOver = useCallback(
     (e: React.DragEvent, targetClusterId: number) => {
       e.preventDefault();
@@ -194,7 +238,7 @@ export function ClusterResults({
     [dragSourceClusterId]
   );
 
-  const handleDragOverCreateNew = useCallback((e: React.DragEvent, side: "left" | "right" | "bottom") => {
+  const handleDragOverCreateNew = useCallback((e: React.DragEvent, side: "left" | "right" | "uncategorized") => {
     e.preventDefault();
     if (e.dataTransfer.types.includes(DRAG_TYPE)) {
       e.dataTransfer.dropEffect = "move";
@@ -268,7 +312,12 @@ export function ClusterResults({
   if (clusters.length === 0) return null;
 
   const isEditable = Boolean(onRename || onMerge || onSplit || onAssignToCluster);
-  const anyDraggingFace = dragSourceClusterId !== null && dragSourceClusterIdForCard === null;
+  const anyDraggingFace =
+    (dragSourceClusterId !== null && dragSourceClusterIdForCard === null) || isTouchDraggingFace;
+  const anyDraggingCard = dragSourceClusterIdForCard !== null || isTouchDraggingCard;
+  const anyDraggingImage = imageDragSrcId !== null;
+  // No-face images that haven't been manually assigned yet
+  const unassignedNoFaceIds = imageIdsWithNoFaces.filter((id) => !imageClusterMap.has(id));
 
   // Separate named clusters from uncategorized
   const namedClusters = clusters.filter((c) => c.clusterId !== UNCATEGORIZED_CLUSTER_ID);
@@ -279,7 +328,8 @@ export function ClusterResults({
       {/* Drag instruction */}
       {isEditable && (
         <div className="tt-drag-hint">
-          Drag faces between cards to reclassify · Drag a face to the edges to split into new
+          <span className="tt-drag-hint--mouse">Drag faces between cards to reclassify · Drag a face to the edges to split into a new person</span>
+          <span className="tt-drag-hint--touch">Long-press a face to reassign it · Long-press the ⠿ handle on a card to merge clusters</span>
         </div>
       )}
 
@@ -287,7 +337,8 @@ export function ClusterResults({
         {/* Left create-new drop zone */}
         {isEditable && onSplit && (
           <div
-            className={`tt-create-zone tt-create-zone--left ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "left" ? "tt-create-zone--hover" : ""}`}
+            data-create-zone="left"
+            className={`tt-create-zone tt-create-zone--left ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "left" || touchOverCreateNew === "left" ? "tt-create-zone--hover" : ""}`}
             style={{ pointerEvents: anyDraggingFace ? "auto" : "none" }}
             onDragOver={(e) => handleDragOverCreateNew(e, "left")}
             onDragLeave={handleDragLeaveCreateNew}
@@ -295,7 +346,7 @@ export function ClusterResults({
           >
             {anyDraggingFace && (
               <span className="tt-create-zone-label">
-                {dragOverCreateNewSide === "left" ? "Create new person" : "Drop to split"}
+                {dragOverCreateNewSide === "left" || touchOverCreateNew === "left" ? "Create new person" : "Drop to split"}
               </span>
             )}
           </div>
@@ -304,7 +355,8 @@ export function ClusterResults({
         {/* Right create-new drop zone */}
         {isEditable && onSplit && (
           <div
-            className={`tt-create-zone tt-create-zone--right ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "right" ? "tt-create-zone--hover" : ""}`}
+            data-create-zone="right"
+            className={`tt-create-zone tt-create-zone--right ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "right" || touchOverCreateNew === "right" ? "tt-create-zone--hover" : ""}`}
             style={{ pointerEvents: anyDraggingFace ? "auto" : "none" }}
             onDragOver={(e) => handleDragOverCreateNew(e, "right")}
             onDragLeave={handleDragLeaveCreateNew}
@@ -312,7 +364,7 @@ export function ClusterResults({
           >
             {anyDraggingFace && (
               <span className="tt-create-zone-label">
-                {dragOverCreateNewSide === "right" ? "Create new person" : "Drop to split"}
+                {dragOverCreateNewSide === "right" || touchOverCreateNew === "right" ? "Create new person" : "Drop to split"}
               </span>
             )}
           </div>
@@ -335,9 +387,18 @@ export function ClusterResults({
 
             const otherClusters = clusters.filter((c) => c.clusterId !== cluster.clusterId);
             const isDropTarget =
-              (isEditable && onAssignToCluster && dragOverClusterId === cluster.clusterId) ||
-              (isEditable && onMerge && dragOverClusterIdForCard === cluster.clusterId);
+              (isEditable && onAssignToCluster &&
+                (dragOverClusterId === cluster.clusterId ||
+                  (isTouchDraggingFace && touchOverClusterId === cluster.clusterId))) ||
+              (isEditable && onMerge &&
+                (dragOverClusterIdForCard === cluster.clusterId ||
+                  (isTouchDraggingCard && touchOverClusterId === cluster.clusterId))) ||
+              (anyDraggingImage && dragOverClusterId === cluster.clusterId);
             const canMerge = isEditable && onMerge && otherClusters.length > 0;
+            // Full images manually assigned to this cluster
+            const assignedImageIds = Array.from(imageClusterMap.entries())
+              .filter(([, cid]) => cid === cluster.clusterId)
+              .map(([imgId]) => imgId);
 
             // Show up to 6 faces; +N slot only appears when total > 6
             const MOSAIC_SHOW = 6;
@@ -355,10 +416,31 @@ export function ClusterResults({
             return (
               <div
                 key={cluster.clusterId}
+                data-cluster-id={cluster.clusterId}
                 className={`tt-pcard ${appearedSet.has(cluster.clusterId) ? "tt-pcard--appeared" : ""} ${isDropTarget ? "tt-pcard--drop-target" : ""}`}
-                onDragOver={(e) => handleCardDragOver(e, cluster.clusterId)}
+                style={isTouchDraggingCard && touchDragCardId === cluster.clusterId ? { pointerEvents: "none", opacity: 0.5 } : undefined}
+                onDragOver={(e) => {
+                  handleCardDragOver(e, cluster.clusterId);
+                  // Also accept image drops
+                  if (e.dataTransfer.types.includes(IMAGE_DRAG_TYPE)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverClusterId(cluster.clusterId);
+                  }
+                }}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleCardDrop(e, cluster.clusterId)}
+                onDrop={(e) => {
+                  // Handle full-image drop first
+                  const imgId = e.dataTransfer.getData(IMAGE_DRAG_TYPE);
+                  if (imgId) {
+                    e.preventDefault();
+                    setImageClusterMap((prev) => { const m = new Map(prev); m.set(imgId, cluster.clusterId); return m; });
+                    setImageDragSrcId(null);
+                    setDragOverClusterId(null);
+                    return;
+                  }
+                  handleCardDrop(e, cluster.clusterId);
+                }}
               >
                 {/* Mosaic header */}
                 <div className="tt-pcard-mosaic">
@@ -371,7 +453,8 @@ export function ClusterResults({
                           draggable
                           onDragStart={(e) => handleDragStart(e, det.id, cluster.clusterId)}
                           onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
-                          style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
+                          {...makeFaceTouchHandlers(det.id, cluster.clusterId)}
+                          style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", opacity: touchDragFaceId === det.id ? 0.45 : 1, transition: "opacity 0.15s" }}
                         >
                           <FaceThumbnail file={det.file} bbox={det.bbox} size={72} alt={cluster.name} className="w-full h-full object-cover" />
                         </div>
@@ -399,6 +482,28 @@ export function ClusterResults({
                       </button>
                     </div>
                   )}
+                  {/* Manually-assigned full images for this cluster */}
+                  {assignedImageIds.map((imgId) => {
+                    const file = filesById.get(imgId);
+                    if (!file) return null;
+                    return (
+                      <div key={`img-${imgId}`} className="tt-mosaic-cell">
+                        <div
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(IMAGE_DRAG_TYPE, imgId);
+                            e.dataTransfer.effectAllowed = "move";
+                            setImageDragSrcId(imgId);
+                          }}
+                          onDragEnd={() => { setImageDragSrcId(null); setDragOverClusterId(null); }}
+                          style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", opacity: imageDragSrcId === imgId ? 0.45 : 1, transition: "opacity 0.15s" }}
+                          title="Drag back to uncategorized"
+                        >
+                          <FullImageThumbnail file={file} size={72} alt="Assigned photo" className="w-full h-full object-cover" />
+                        </div>
+                      </div>
+                    );
+                  })}
                   {/* Full-width collapse row when all faces shown */}
                   {isExpanded && !hasMore && (
                     <div className="tt-mosaic-collapse-cell">
@@ -422,18 +527,26 @@ export function ClusterResults({
                   {/* Name row */}
                   <div className="tt-pcard-name-row">
                     {editingNameId === cluster.clusterId && onRename ? (
-                      <input
-                        type="text"
-                        className="tt-pcard-name-input"
-                        defaultValue={cluster.name}
-                        placeholder="Name this person…"
-                        onBlur={(e) => handleRenameSubmit(cluster.clusterId, e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleRenameSubmit(cluster.clusterId, (e.target as HTMLInputElement).value);
-                          if (e.key === "Escape") setEditingNameId(null);
-                        }}
-                        autoFocus
-                      />
+                      <>
+                        <input
+                          type="text"
+                          className="tt-pcard-name-input"
+                          defaultValue={cluster.name}
+                          placeholder="Name this person…"
+                          onBlur={(e) => handleRenameSubmit(cluster.clusterId, e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRenameSubmit(cluster.clusterId, (e.target as HTMLInputElement).value);
+                            if (e.key === "Escape") setEditingNameId(null);
+                          }}
+                          autoFocus
+                        />
+                        {duplicateWarnId === cluster.clusterId && (
+                          <span style={{ fontSize: "0.72rem", color: "var(--accent)", marginTop: "0.2rem", display: "block", fontFamily: "'DM Mono', monospace" }}
+                            title="Another character already has this name">
+                            ⚠ duplicate name
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <>
                         {/* Inline drag handle — shows name as ghost when dragging */}
@@ -455,7 +568,9 @@ export function ClusterResults({
                               setDragOverCreateNewSide(null);
                             }}
                             onDragEnd={handleClusterCardDragEnd}
-                            title={`Drag to merge ${cluster.name}`}
+                            {...makeCardTouchHandlers(cluster.clusterId)}
+                            style={{ opacity: touchDragCardId === cluster.clusterId ? 0.45 : 1, transition: "opacity 0.15s" }}
+                            title={`Long-press or drag to merge ${cluster.name}`}
                           >
                             <SmallDragIcon />
                           </div>
@@ -531,18 +646,19 @@ export function ClusterResults({
           })}
         </div>
 
-        {/* Bottom create-new drop zone */}
-        {isEditable && onSplit && (
+        {/* Bottom drop zone — sends face to Uncategorized (mobile); sides create new character */}
+        {isEditable && onAssignToCluster && (
           <div
-            className={`tt-create-zone tt-create-zone--bottom ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "bottom" ? "tt-create-zone--hover" : ""}`}
+            data-create-zone="uncategorized"
+            className={`tt-create-zone tt-create-zone--bottom tt-create-zone--desktop-hide ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "uncategorized" || touchOverCreateNew === "uncategorized" ? "tt-create-zone--hover" : ""}`}
             style={{ pointerEvents: anyDraggingFace ? "auto" : "none" }}
-            onDragOver={(e) => handleDragOverCreateNew(e, "bottom")}
+            onDragOver={(e) => handleDragOverCreateNew(e, "uncategorized")}
             onDragLeave={handleDragLeaveCreateNew}
-            onDrop={handleDropCreateNew}
+            onDrop={handleDropToUncategorized}
           >
             {anyDraggingFace && (
               <span className="tt-create-zone-label">
-                {dragOverCreateNewSide === "bottom" ? "Create new person" : "Drop here to split into new person"}
+                {dragOverCreateNewSide === "uncategorized" || touchOverCreateNew === "uncategorized" ? "Move to Uncategorized" : "Drop to uncategorize"}
               </span>
             )}
           </div>
@@ -561,21 +677,41 @@ export function ClusterResults({
           })
           .filter((d): d is NonNullable<typeof d> => d !== null);
 
-        const totalUncat = uncatDetections.length + imageIdsWithNoFaces.length;
+        const totalUncat = uncatDetections.length + unassignedNoFaceIds.length;
         if (totalUncat === 0) return null;
 
         const isUncatDrop =
           uncatCluster &&
           isEditable &&
           onAssignToCluster &&
-          dragOverClusterId === UNCATEGORIZED_CLUSTER_ID;
+          (dragOverClusterId === UNCATEGORIZED_CLUSTER_ID ||
+            (isTouchDraggingFace && touchOverClusterId === UNCATEGORIZED_CLUSTER_ID));
 
         return (
           <div
-          className={`tt-unid-section${isUncatDrop ? " tt-unid-section--drop" : ""}`}
-          onDragOver={uncatCluster ? (e) => handleDragOver(e, UNCATEGORIZED_CLUSTER_ID) : undefined}
-          onDragLeave={uncatCluster ? handleDragLeave : undefined}
-          onDrop={uncatCluster ? (e) => handleDrop(e, UNCATEGORIZED_CLUSTER_ID) : undefined}
+          data-cluster-id={UNCATEGORIZED_CLUSTER_ID}
+          className={`tt-unid-section${isUncatDrop || (anyDraggingImage && dragOverClusterId === UNCATEGORIZED_CLUSTER_ID) ? " tt-unid-section--drop" : ""}`}
+          onDragOver={(e) => {
+            if (uncatCluster) handleDragOver(e, UNCATEGORIZED_CLUSTER_ID);
+            if (e.dataTransfer.types.includes(IMAGE_DRAG_TYPE)) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              setDragOverClusterId(UNCATEGORIZED_CLUSTER_ID);
+            }
+          }}
+          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) { setDragOverClusterId(null); setDragOverClusterIdForCard(null); } }}
+          onDrop={(e) => {
+            // Drop image back to uncategorized
+            const imgId = e.dataTransfer.getData(IMAGE_DRAG_TYPE);
+            if (imgId) {
+              e.preventDefault();
+              setImageClusterMap((prev) => { const m = new Map(prev); m.delete(imgId); return m; });
+              setImageDragSrcId(null);
+              setDragOverClusterId(null);
+              return;
+            }
+            if (uncatCluster) handleDrop(e, UNCATEGORIZED_CLUSTER_ID);
+          }}
           >
             <div className="tt-unid-title">
               Uncategorized
@@ -593,7 +729,8 @@ export function ClusterResults({
                       draggable
                       onDragStart={(e) => handleDragStart(e, id, UNCATEGORIZED_CLUSTER_ID)}
                       onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
-                      style={{ width: "100%", height: "100%", cursor: "grab" }}
+                      {...makeFaceTouchHandlers(id, UNCATEGORIZED_CLUSTER_ID)}
+                      style={{ width: "100%", height: "100%", cursor: "grab", opacity: touchDragFaceId === id ? 0.45 : 1, transition: "opacity 0.15s" }}
                     >
                       <FaceThumbnail file={file} bbox={bbox} size={72} alt="Uncategorized face" className="w-full h-full object-cover" />
                     </div>
@@ -602,24 +739,33 @@ export function ClusterResults({
                   )}
                 </div>
               ))}
-              {imageIdsWithNoFaces.map((imageId) => {
+              {unassignedNoFaceIds.map((imageId) => {
                 const file = filesById.get(imageId);
                 if (!file) return null;
                 return (
                   <div
                     key={`no-face-${imageId}`}
                     className="tt-unid-chip"
-                    title="No face detected"
-                    style={{ outline: "1px solid var(--border2)" }}
+                    title="No face detected — drag to a character card to assign"
+                    style={{ outline: "1px solid var(--border2)", cursor: "grab" }}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(IMAGE_DRAG_TYPE, imageId);
+                      e.dataTransfer.effectAllowed = "move";
+                      setImageDragSrcId(imageId);
+                    }}
+                    onDragEnd={() => { setImageDragSrcId(null); setDragOverClusterId(null); }}
                   >
-                    <FullImageThumbnail file={file} size={48} alt="No face detected" />
+                    <div style={{ opacity: imageDragSrcId === imageId ? 0.45 : 1, transition: "opacity 0.15s", width: "100%", height: "100%" }}>
+                      <FullImageThumbnail file={file} size={72} alt="No face detected" />
+                    </div>
                   </div>
                 );
               })}
             </div>
           </div>
-        );
+        );  // end inner IIFE
       })()}
     </div>
   );
-}
+});

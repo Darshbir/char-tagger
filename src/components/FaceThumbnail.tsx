@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Bbox } from "@/lib/types";
 
 interface FaceThumbnailProps {
@@ -12,7 +12,7 @@ interface FaceThumbnailProps {
 }
 
 /** Renders a cropped face from an image file using canvas (bbox in image coordinates). */
-export function FaceThumbnail({ file, bbox, size = 64, alt = "", className = "" }: FaceThumbnailProps) {
+export const FaceThumbnail = memo(function FaceThumbnail({ file, bbox, size = 64, alt = "", className = "" }: FaceThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -57,4 +57,4 @@ export function FaceThumbnail({ file, bbox, size = 64, alt = "", className = "" 
       style={{ width: size, height: size, display: "block", pointerEvents: "none" }}
     />
   );
-}
+});

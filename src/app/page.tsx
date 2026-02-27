@@ -220,6 +220,7 @@ export default function Home() {
   const handleReset = useCallback(() => {
     confettiFiredRef.current = false;
     reset();
+    setFiles([]);
     setShowLanding(false);
   }, [reset]);
 
@@ -338,7 +339,7 @@ export default function Home() {
   const fact = FACTS[factIdx];
 
   return (
-    <Layout onLogoClick={() => { if (!showLanding) setShowLanding(true); }}>
+    <Layout onLogoClick={() => { if (!showLanding) { reset(); setFiles([]); setShowLanding(true); } }}>
       <ParticleBackground visible={showLanding} />
       {/* ------------------------------------------
           SCREEN 0 — LANDING

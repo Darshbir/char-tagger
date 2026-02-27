@@ -1026,7 +1026,7 @@ body::before {
   border-radius: 14px;
   padding: 0.9rem 1.1rem;
   box-shadow: 0 2px 10px var(--shadow);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
 }
 .tt-step--active {
   border-color: var(--accent3);
@@ -1035,6 +1035,28 @@ body::before {
 .tt-step--done {
   border-color: var(--green);
   box-shadow: 0 4px 16px color-mix(in srgb, var(--green) 12%, transparent);
+}
+/* Light mode: orange tint on processing step cards */
+[data-theme="light"] .tt-step {
+  background: color-mix(in srgb, var(--surface) 84%, var(--accent2) 16%);
+  border-color: color-mix(in srgb, var(--accent2) 26%, transparent);
+}
+[data-theme="light"] .tt-step--active {
+  background: color-mix(in srgb, var(--surface) 78%, var(--accent2) 22%);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  box-shadow: 0 4px 22px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+[data-theme="light"] .tt-step--done {
+  background: color-mix(in srgb, var(--surface) 84%, var(--accent2) 16%);
+  border-color: var(--green);
+}
+[data-theme="light"] .tt-fact-box {
+  background: color-mix(in srgb, var(--surface) 84%, var(--accent2) 16%);
+  border-color: color-mix(in srgb, var(--accent2) 26%, transparent);
+}
+[data-theme="light"] .tt-liquid-wrap {
+  border-color: color-mix(in srgb, var(--accent2) 36%, transparent);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 .tt-step-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.55rem; }
 .tt-step-ico { width: 1.8rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
@@ -1159,15 +1181,15 @@ body::before {
   background: linear-gradient(160deg, rgba(200, 115, 42, 0.06) 0%, rgba(200, 115, 42, 0.02) 40%, transparent 70%);
 }
 [data-theme="light"] .tt-summary-bar {
-  background: color-mix(in srgb, var(--bg2) 82%, var(--accent2) 18%);
-  border-color: rgba(200, 115, 42, 0.22);
+  background: color-mix(in srgb, var(--bg2) 70%, var(--accent2) 30%);
+  border-color: rgba(200, 115, 42, 0.38);
 }
 [data-theme="light"] .tt-pcard {
-  background: color-mix(in srgb, var(--surface) 84%, var(--accent2) 16%);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
-  border-color: color-mix(in srgb, var(--accent2) 28%, transparent) !important;
-  box-shadow: 0 4px 20px color-mix(in srgb, var(--accent) 8%, transparent), inset 0 1px 0 rgba(255,255,255,0.62) !important;
+  background: color-mix(in srgb, var(--surface) 74%, var(--accent2) 26%);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border-color: color-mix(in srgb, var(--accent2) 46%, transparent) !important;
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--accent) 16%, transparent), inset 0 1px 0 rgba(255,255,255,0.72) !important;
 }
 [data-theme="dark"] .tt-pcard {
   background: color-mix(in srgb, var(--surface) 80%, transparent);
@@ -1196,18 +1218,28 @@ body::before {
 }
 
 /* ── PCARD ── */
+@keyframes tt-card-appear {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
 .tt-pcard {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 4px 20px var(--shadow);
-  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1), box-shadow 0.25s ease, border-color 0.25s ease;
+  /* Hover enter/exit use a simple decelerate — no overshoot spring */
+  transition: transform 0.22s ease-out, box-shadow 0.25s ease, border-color 0.25s ease, opacity 0.35s ease;
   opacity: 0;
   transform: translateY(20px) scale(0.97);
   cursor: default;
 }
-.tt-pcard--appeared { opacity: 1; transform: none; }
+/* Spring entrance via animation (fires once); afterwards the ease-out transition governs hover */
+.tt-pcard--appeared {
+  opacity: 1;
+  transform: none;
+  animation: tt-card-appear 0.38s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
 .tt-pcard--appeared:hover {
   transform: translateY(-6px) scale(1.01);
   box-shadow: 0 16px 44px var(--shadow2);
@@ -1519,6 +1551,14 @@ body::before {
 }
 .tt-unid-chip:hover { transform: scale(1.04); border-color: var(--border2); box-shadow: 0 6px 16px var(--shadow2); }
 .tt-unid-chip--drop { border-color: var(--accent3); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 20%, transparent); }
+/* Make face thumbnails and full-image thumbnails fill their chip container */
+.tt-unid-chip canvas,
+.tt-unid-chip img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  display: block;
+}
 
 /* Create-new drop zones */
 .tt-create-zone {
@@ -1557,6 +1597,16 @@ body::before {
 }
 .tt-create-zone--bottom .tt-create-zone-label { writing-mode: horizontal-tb; }
 
+/* Bottom create-new zone — hidden on desktop/mouse devices, shown on touch */
+.tt-create-zone--desktop-hide {
+  display: none;
+}
+@media (pointer: coarse) {
+  .tt-create-zone--desktop-hide {
+    display: flex;
+  }
+}
+
 /* Drag instruction */
 .tt-drag-hint {
   font-size: 0.87rem;
@@ -1564,6 +1614,13 @@ body::before {
   text-align: center;
   margin-bottom: 1.2rem;
   font-family: 'DM Mono', monospace;
+}
+/* Show mouse hint on pointer:fine (desktop), touch hint on pointer:coarse (mobile) */
+.tt-drag-hint--touch { display: none; }
+.tt-drag-hint--mouse { display: inline; }
+@media (pointer: coarse) {
+  .tt-drag-hint--touch { display: inline; }
+  .tt-drag-hint--mouse { display: none; }
 }
 
 /* ── CONFETTI ── */
