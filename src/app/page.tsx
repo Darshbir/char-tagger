@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UploadZone } from "@/components/UploadZone";
 import { Layout } from "@/components/Layout";
 import { ClusterResults } from "@/components/ClusterResults";
 import { LiquidCanvas } from "@/components/LiquidCanvas";
+import { ParticleBackground } from "@/components/ParticleBackground";
 import { useFacePipeline } from "@/hooks/useFacePipeline";
 import {
   getClusterOptions,
@@ -15,28 +16,53 @@ import {
 } from "@/lib/clustering";
 import type { FaceDetectorType } from "@/lib/constants";
 
-/* â”€â”€ Fun facts â”€â”€ */
+/* ── Tiny SVG icon components (used in FACTS, STEPS, landing) ── */
+function IcoCamera() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>; }
+function IcoEye() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>; }
+function IcoBolt() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>; }
+function IcoCpu() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" /><line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" /><line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" /><line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" /></svg>; }
+function IcoGlobe() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>; }
+function IcoMap() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" /><line x1="8" y1="2" x2="8" y2="18" /><line x1="16" y1="6" x2="16" y2="22" /></svg>; }
+function IcoWifi() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M1.42 9a16 16 0 0 1 21.16 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" strokeWidth="2.5" strokeLinecap="round" /></svg>; }
+function IcoFilm() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="2" y="2" width="20" height="20" rx="2" /><line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" /><line x1="17" y1="17" x2="22" y2="17" /><line x1="17" y1="7" x2="22" y2="7" /></svg>; }
+function IcoLayers() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>; }
+function IcoMountain() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polygon points="3 17 9 5 15 11 19 17 3 17" /><circle cx="19" cy="6" r="2" /></svg>; }
+function IcoSearch() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>; }
+function IcoDownload() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>; }
+function IcoScanFace() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" /><line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" /></svg>; }
+function IcoSparkles() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 3L9.5 9.5 3 12l6.5 2.5L12 21l2.5-6.5L21 12l-6.5-2.5z" /><path d="M5 3v4M3 5h4M19 17v4M17 19h4" /></svg>; }
+function IcoLock() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>; }
+function IcoBan() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>; }
+function IcoPhone() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="2.5" strokeLinecap="round" /></svg>; }
+function IcoFolder() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>; }
+function IcoUser() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>; }
+function IcoShield() { return <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>; }
+function IcoEyeOff() { return <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>; }
+function IcoCheckDone() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12" /></svg>; }
+function IcoFaceSilhouette({ fill }: { fill?: string }) { return <svg width="54" height="54" viewBox="0 0 60 60" fill="none" aria-hidden><circle cx="30" cy="22" r="14" fill={fill ?? "var(--border2)"} /><path d="M5 56c0-13.807 11.193-25 25-25s25 11.193 25 25" fill={fill ?? "var(--border2)"} /></svg>; }
+
+/* ── Fun facts ── */
 const FACTS = [
-  { icon: "ðŸ“·", text: "The first photograph ever taken required an 8-hour exposure back in 1826." },
-  { icon: "ðŸ§ ", text: "Your eyes can distinguish around 10 million different colors â€” way more than any camera sensor." },
-  { icon: "âš¡", text: "Light travels at 299,792,458 m/s. Your camera captures it in a fraction of a millisecond." },
-  { icon: "ðŸ”’", text: "Every face embedding computed right now is a 512-dimensional vector â€” and it never leaves your device." },
-  { icon: "ðŸŒ", text: "Photography comes from Greek: Ï†á¿¶Ï‚ (light) + Î³ÏÎ¬Ï†Ï‰ (write). Literally 'writing with light'." },
-  { icon: "ðŸ¤–", text: "ArcFace, the model running in your browser, was trained on millions of faces and achieves 99%+ accuracy on LFW benchmark." },
-  { icon: "ðŸ•ï¸", text: "An average trip with friends generates 400â€“800 photos. TripTag sorts them all in under 30 seconds." },
-  { icon: "ðŸŒ", text: "WebAssembly runs at near-native speed. The entire ML pipeline runs inside this single browser tab." },
-  { icon: "ðŸŽžï¸", text: "Polaroid cameras were invented in 1948. Today your phone shoots 48 megapixels â€” in a device thinner than a Polaroid." },
-  { icon: "ðŸ§¬", text: "Cosine similarity between two face embeddings tells us how 'alike' two people are. Values above 0.6 typically indicate the same person." },
-  { icon: "ðŸ”ï¸", text: "DBSCAN clustering was invented in 1996. It's fast, handles noise, and doesn't require you to guess how many people are in your photos." },
-  { icon: "ðŸ”", text: "RetinaFace can detect faces rotated up to 90Â° and as small as 16Ã—16 pixels in a 640Ã—640 image." },
+  { Icon: IcoCamera, text: "The first photograph ever taken required an 8-hour exposure back in 1826." },
+  { Icon: IcoEye, text: "Your eyes can distinguish around 10 million different colors — way more than any camera sensor." },
+  { Icon: IcoBolt, text: "Light travels at 299,792,458 m/s. Your camera captures it in a fraction of a millisecond." },
+  { Icon: IcoLock, text: "Every face embedding computed right now is a 512-dimensional vector — and it never leaves your device." },
+  { Icon: IcoGlobe, text: "Photography comes from Greek: φῶς (light) + γράφω (write). Literally 'writing with light'." },
+  { Icon: IcoCpu, text: "ArcFace, the model running in your browser, was trained on millions of faces and achieves 99%+ accuracy on LFW benchmark." },
+  { Icon: IcoMap, text: "An average trip with friends generates 400–800 photos. TripTag sorts them all in under 30 seconds." },
+  { Icon: IcoWifi, text: "WebAssembly runs at near-native speed. The entire ML pipeline runs inside this single browser tab." },
+  { Icon: IcoFilm, text: "Polaroid cameras were invented in 1948. Today your phone shoots 48 megapixels — in a device thinner than a Polaroid." },
+  { Icon: IcoLayers, text: "Cosine similarity between two face embeddings tells us how 'alike' two people are. Values above 0.6 typically indicate the same person." },
+  { Icon: IcoMountain, text: "DBSCAN clustering was invented in 1996. It's fast, handles noise, and doesn't require you to guess how many people are in your photos." },
+  { Icon: IcoSearch, text: "RetinaFace can detect faces rotated up to 90° and as small as 16×16 pixels in a 640×640 image." },
 ];
 
-/* â”€â”€ Step definitions â”€â”€ */
+/* ── Step definitions ── */
 const STEPS = [
-  { icon: "â¬‡ï¸", label: "Load AI Model", sublabel: "Fetching ONNX weights & compiling WASMâ€¦" },
-  { icon: "ðŸ”", label: "Detect Faces", sublabel: "Running RetinaFace on every photoâ€¦" },
-  { icon: "ðŸ§¬", label: "Create Embeddings", sublabel: "ArcFace 512-d vectors for each faceâ€¦" },
-  { icon: "ðŸª„", label: "Cluster People", sublabel: "DBSCAN grouping similar embeddingsâ€¦" },
+  { Icon: IcoDownload, label: "Load AI Model", sublabel: "Fetching ONNX weights & compiling WASM…" },
+  { Icon: IcoScanFace, label: "Detect Faces", sublabel: "Running RetinaFace on every photo…" },
+  { Icon: IcoLayers, label: "Create Embeddings", sublabel: "ArcFace 512-d vectors for each face…" },
+  { Icon: IcoSparkles, label: "Cluster People", sublabel: "DBSCAN grouping similar embeddings…" },
 ];
 
 function phaseToStepIndex(phase: string) {
@@ -56,7 +82,7 @@ function formatEta(ms: number) {
   return `~${Math.round(s / 60)}m left`;
 }
 
-/* â”€â”€ Confetti â”€â”€ */
+/* ── Confetti ── */
 function fireConfetti() {
   const colors = ["#E8904A", "#EEB060", "#C8702A", "#D09060", "#F0C880", "#4A7C5A", "#C8732A", "#EAB856"];
   for (let i = 0; i < 36; i++) {
@@ -94,6 +120,7 @@ export default function Home() {
   const confettiFiredRef = useRef(false);
   const stepStartTimeRef = useRef<number>(Date.now());
   const prevPhaseRef = useRef<string>("idle");
+  const landingScreenRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const opts = getClusterOptions();
@@ -168,6 +195,20 @@ export default function Home() {
     }
   }, [progress.phase]);
 
+  /* Scroll-reveal IntersectionObserver for landing sections */
+  useEffect(() => {
+    const el = landingScreenRef.current;
+    if (!el || !showLanding) return;
+    const revEls = el.querySelectorAll(".tt-rev");
+    if (!revEls.length) return;
+    const observer = new IntersectionObserver(
+      (entries) => { for (const e of entries) { if (e.isIntersecting) e.target.classList.add("tt-vis"); } },
+      { threshold: 0.1, root: el }
+    );
+    revEls.forEach((r) => observer.observe(r));
+    return () => observer.disconnect();
+  }, [showLanding]);
+
   /* Enter key shortcut */
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -223,65 +264,178 @@ export default function Home() {
 
   return (
     <Layout>
-      {/* ══════════════════════════════════════════
+      <ParticleBackground visible={showLanding} />
+      {/* ------------------------------------------
           SCREEN 0 — LANDING
-      ══════════════════════════════════════════ */}
-      <div className={`tt-screen ${!showLanding ? "tt-screen--hidden" : ""}`}>
-        <div className="tt-landing-wrap">
-          <div className="tt-eyebrow">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden>
-              <circle cx="5" cy="5" r="5" />
-            </svg>
-            Privacy-first · On-device AI · Zero uploads
-          </div>
-          <h1 className="tt-headline">
-            Sort your trip<br />
-            photos by person,<br />
-            <em>privately</em>.
-          </h1>
-          <p className="tt-subtext">
-            AI-powered face clustering that lives entirely in your browser tab.
-            No uploads. No accounts. No creepy storage.
-          </p>
-          <div className="tt-badges">
-            <div className="tt-badge">🚫 0 server calls</div>
-            <div className="tt-badge">📱 100% on-device</div>
-            <div className="tt-badge">🗂️ ∞ photos local</div>
-            <div className="tt-badge">👤 No account needed</div>
-          </div>
-          <div className="tt-stats">
-            <div>
-              <div className="tt-stat-n">0</div>
-              <div className="tt-stat-l">Server Calls</div>
+      ------------------------------------------ */}
+      <div
+        ref={landingScreenRef}
+        className={`tt-screen tt-screen--landing ${!showLanding ? "tt-screen--hidden" : ""}`}
+      >
+        <div className="tt-landing-pg">
+          {/* ── HERO ── */}
+          <section className="tt-hero-wrap">
+            <div className="tt-hero">
+              {/* LEFT: headline + badges + stats + CTA */}
+              <div className="tt-hleft">
+                <div className="tt-eyebrow">
+                  <svg width="7" height="7" viewBox="0 0 10 10" fill="currentColor" aria-hidden><circle cx="5" cy="5" r="5" /></svg>
+                  Privacy-first &middot; On-device AI &middot; Zero uploads
+                </div>
+                <h1 className="tt-headline">
+                  Sort your trip<br />
+                  photos by person,<br />
+                  <em>privately</em>.
+                </h1>
+                <p className="tt-subtext">
+                  AI-powered face clustering that lives entirely in your browser tab.
+                  No uploads. No accounts. No creepy storage.
+                </p>
+                <div className="tt-badges">
+                  <div className="tt-badge"><IcoBan /> 0 server calls</div>
+                  <div className="tt-badge"><IcoPhone /> 100% on-device</div>
+                  <div className="tt-badge"><IcoFolder /> &#8734; photos local</div>
+                  <div className="tt-badge"><IcoUser /> No account needed</div>
+                </div>
+                <div className="tt-stats">
+                  <div>
+                    <div className="tt-stat-n">0</div>
+                    <div className="tt-stat-l">Server Calls</div>
+                  </div>
+                  <div>
+                    <div className="tt-stat-n tt-stat-n--sys">&#8734;</div>
+                    <div className="tt-stat-l">Photos Local</div>
+                  </div>
+                  <div>
+                    <div className="tt-stat-n tt-stat-n--accent">100%</div>
+                    <div className="tt-stat-l">Your Device</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="tt-btn-go tt-btn-go--lg"
+                  onClick={() => setShowLanding(false)}
+                >
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Tag my trip photos
+                </button>
+              </div>
+
+              {/* RIGHT: polaroid strip + CTA card */}
+              <div className="tt-hright">
+                <div className="tt-polaroid-strip">
+                  <div className="tt-polaroid tt-polaroid--a">
+                    <div className="tt-polaroid-face" style={{ background: "linear-gradient(145deg, #EAC890, #D4A460)" }}>
+                      <IcoFaceSilhouette fill="rgba(110,60,10,0.22)" />
+                    </div>
+                    <div className="tt-polaroid-label">Alex</div>
+                  </div>
+                  <div className="tt-polaroid tt-polaroid--b">
+                    <div className="tt-polaroid-face" style={{ background: "linear-gradient(145deg, #C0D4E8, #9AB4CC)" }}>
+                      <IcoFaceSilhouette fill="rgba(30,60,100,0.22)" />
+                    </div>
+                    <div className="tt-polaroid-label">Sam</div>
+                  </div>
+                  <div className="tt-polaroid tt-polaroid--c">
+                    <div className="tt-polaroid-face" style={{ background: "linear-gradient(145deg, #C8E4BC, #A8C898)" }}>
+                      <IcoFaceSilhouette fill="rgba(20,70,20,0.22)" />
+                    </div>
+                    <div className="tt-polaroid-label">Jamie</div>
+                  </div>
+                </div>
+
+                <div className="tt-cta-card">
+                  <div className="tt-cta-card-eyebrow">Start in seconds</div>
+                  <div className="tt-cta-card-title">Drop your photos,<br />get results instantly</div>
+                  <p className="tt-cta-card-sub">
+                    Zero config. Zero uploads. Results in your browser as fast as your device can process.
+                  </p>
+                  <button
+                    type="button"
+                    className="tt-btn-go"
+                    onClick={() => setShowLanding(false)}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    Try it free &mdash; no sign up
+                  </button>
+                  <div className="tt-trust-row">
+                    <div className="tt-trust-item"><IcoShield /> No uploads</div>
+                    <div className="tt-trust-item"><IcoLock /> No storage</div>
+                    <div className="tt-trust-item"><IcoEyeOff /> No tracking</div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="tt-stat-n">∞</div>
-              <div className="tt-stat-l">Photos Local</div>
+          </section>
+
+          {/* ── HOW IT WORKS ── */}
+          <section className="tt-how tt-rev">
+            <div className="tt-how-headline">How it <em>works</em></div>
+            <p className="tt-how-sub">Four steps, entirely in your browser. No server ever sees your photos.</p>
+            <div className="tt-how-grid">
+              {([
+                { Icon: IcoDownload, step: "Step 1", title: "Upload photos", desc: "Drag your trip folder or select images. All data stays in-browser — nothing leaves this tab." },
+                { Icon: IcoScanFace, step: "Step 2", title: "Detect faces", desc: "RetinaFace ONNX model pinpoints every face across all your photos in seconds." },
+                { Icon: IcoLayers, step: "Step 3", title: "Create embeddings", desc: "ArcFace maps each face to a 512-dimensional vector that captures identity." },
+                { Icon: IcoSparkles, step: "Step 4", title: "Cluster people", desc: "DBSCAN groups similar embeddings automatically — no need to guess how many people." },
+              ] as const).map((card, i) => (
+                <div key={i} className="tt-how-card">
+                  <div className="tt-how-ico"><card.Icon /></div>
+                  <div className="tt-how-step">{card.step}</div>
+                  <div className="tt-how-title">{card.title}</div>
+                  <p className="tt-how-desc">{card.desc}</p>
+                </div>
+              ))}
             </div>
-            <div>
-              <div className="tt-stat-n tt-stat-n--accent">100%</div>
-              <div className="tt-stat-l">Your Device</div>
+          </section>
+
+          {/* ── PRIVACY BLOCK ── */}
+          <section className="tt-priv-block tt-rev">
+            <div className="tt-priv-inner">
+              <div>
+                <div className="tt-priv-headline">Your photos <em>never</em><br />leave your device</div>
+                <p className="tt-priv-text">
+                  Every byte of your data is processed right inside this browser tab. The ML models run entirely in
+                  WebAssembly &mdash; no server calls, no cloud storage, no fine print.
+                </p>
+              </div>
+              <div className="tt-priv-list">
+                {([
+                  { Icon: IcoBan, label: "Zero server calls", desc: "HTTP requests stop at model download. After that — silence." },
+                  { Icon: IcoLock, label: "No persistent storage", desc: "Nothing written to disk, IndexedDB, or any server. Refresh and it's gone." },
+                  { Icon: IcoEyeOff, label: "No tracking", desc: "No analytics, no telemetry, no third-party scripts phoning home." },
+                  { Icon: IcoUser, label: "No account required", desc: "Open the page, drop photos, get results. That's it." },
+                ] as const).map((item, i) => (
+                  <div key={i} className="tt-priv-item">
+                    <div className="tt-priv-item-ico"><item.Icon /></div>
+                    <div>
+                      <div className="tt-priv-item-label">{item.label}</div>
+                      <div className="tt-priv-item-desc">{item.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            className="tt-btn-go tt-btn-go--lg"
-            onClick={() => setShowLanding(false)}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            Tag my trip photos
-          </button>
+          </section>
+
+          {/* ── FOOTER ── */}
+          <footer className="tt-footer tt-rev">
+            <div className="tt-footer-logo">Trip<em>Tag</em></div>
+            <div className="tt-footer-note">Privacy-first &middot; On-device AI &middot; 0 server calls</div>
+          </footer>
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════
-          SCREEN 1 — UPLOAD
-      ══════════════════════════════════════════ */}
-      <div className={`tt-screen ${!showUpload ? "tt-screen--hidden" : ""}`}>
+      {/* ------------------------------------------
+          SCREEN 1 � UPLOAD
+      ------------------------------------------ */}
+      <div className={`tt-screen tt-screen--upload ${!showUpload ? "tt-screen--hidden" : ""}`}>
         <div className="tt-upload-solo">
           <button
             type="button"
@@ -298,24 +452,6 @@ export default function Home() {
               {error}
             </div>
           )}
-          <UploadZone
-            files={files}
-            onFilesChange={setFiles}
-            showProcessHint={files.length > 0}
-            actions={
-              <button
-                type="button"
-                className="tt-btn-go"
-                onClick={handleProcess}
-                disabled={files.length === 0}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-                {files.length === 0 ? "Choose photos first" : `Tag my trip (${files.length} photo${files.length !== 1 ? "s" : ""})`}
-              </button>
-            }
-          />
 
           {/* Advanced settings */}
           <details className="tt-adv-details">
@@ -376,24 +512,54 @@ export default function Home() {
               )}
             </div>
           </details>
+
+          <UploadZone
+            files={files}
+            onFilesChange={setFiles}
+            showProcessHint={files.length > 0}
+            actions={
+              <button
+                type="button"
+                className="tt-btn-go"
+                onClick={handleProcess}
+                disabled={files.length === 0}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                {files.length === 0 ? "Choose photos first" : `Tag my trip (${files.length} photo${files.length !== 1 ? "s" : ""})`}
+              </button>
+            }
+          />
         </div>
       </div>
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-          SCREEN 2 â€” PROCESSING
-      â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-      <div className={`tt-screen ${!isProcessing ? "tt-screen--hidden" : ""}`}>
+      {/* ══════════════════════════════════════════
+          SCREEN 2 — PROCESSING
+      ══════════════════════════════════════════ */}
+      <div className={`tt-screen tt-screen--proc ${!isProcessing ? "tt-screen--hidden" : ""}`}>
         <div className="tt-proc-wrap">
           <div className="tt-proc-header">
             <div className="tt-proc-title">
               Processing your <em>memories</em>
             </div>
             <div className="tt-proc-sub">
-              All computation is happening right here in your tab â€” zero bytes uploaded.
+              All computation is happening right here in your tab — zero bytes uploaded.
             </div>
           </div>
 
           <LiquidCanvas phase={progress.phase} />
+
+          {/* Fun fact */}
+          <div className="tt-fact-box">
+            <div style={{ flexShrink: 0, color: "var(--accent2)", display: "flex", alignItems: "center", justifyContent: "center", width: 24, height: 24 }}><fact.Icon /></div>
+            <div>
+              <div className="tt-fact-label">Did you know?</div>
+              <div className={`tt-fact-text ${factFade ? "tt-fact-text--fade" : ""}`}>
+                {fact.text}
+              </div>
+            </div>
+          </div>
 
           {/* Steps */}
           <div className="tt-steps">
@@ -408,7 +574,7 @@ export default function Home() {
                   className={`tt-step ${state === "active" ? "tt-step--active" : ""} ${state === "done" ? "tt-step--done" : ""}`}
                 >
                   <div className="tt-step-header">
-                    <div className="tt-step-ico">{step.icon}</div>
+                    <div className="tt-step-ico" style={{ color: "var(--accent2)" }}><step.Icon /></div>
                     <div className="tt-step-info">
                       <div className="tt-step-label">{step.label}</div>
                       <div className="tt-step-detail">
@@ -416,7 +582,7 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="tt-step-status">
-                      {state === "done" ? "âœ“ done" : state === "active" ? "runningâ€¦" : "waiting"}
+                      {state === "done" ? <><IcoCheckDone /> done</> : state === "active" ? "running…" : "waiting"}
                     </div>
                   </div>
                   <div className="tt-pbar-track">
@@ -424,7 +590,7 @@ export default function Home() {
                   </div>
                   {isActiveStep && (
                     <div className="tt-prog-meta">
-                      <span>{pct !== null ? `${pct}%` : "initialisingâ€¦"}</span>
+                      <span>{pct !== null ? `${pct}%` : "initialising…"}</span>
                       {eta && <span>{eta}</span>}
                     </div>
                   )}
@@ -432,23 +598,12 @@ export default function Home() {
               );
             })}
           </div>
-
-          {/* Fun fact */}
-          <div className="tt-fact-box">
-            <div style={{ fontSize: "1.25rem", flexShrink: 0, marginTop: "0.05rem" }}>{fact.icon}</div>
-            <div>
-              <div className="tt-fact-label">Did you know?</div>
-              <div className={`tt-fact-text ${factFade ? "tt-fact-text--fade" : ""}`}>
-                {fact.text}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-          SCREEN 3 â€” RESULTS
-      â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+      {/* ══════════════════════════════════════════
+          SCREEN 3 — RESULTS
+      ══════════════════════════════════════════ */}
       <div className={`tt-screen tt-screen--results ${!showResults ? "tt-screen--hidden" : ""}`}>
         <div className="tt-results-wrap">
           <div className="tt-res-header">
@@ -458,7 +613,7 @@ export default function Home() {
               </div>
             </div>
             <div className="tt-res-meta">
-              {files.length} photo{files.length !== 1 ? "s" : ""} Â· {totalFaces} face{totalFaces !== 1 ? "s" : ""}
+              {files.length} photo{files.length !== 1 ? "s" : ""} · {totalFaces} face{totalFaces !== 1 ? "s" : ""}
             </div>
           </div>
 

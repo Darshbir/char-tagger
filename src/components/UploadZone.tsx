@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useState } from "react";
 import { ImagePreviewModal } from "./ImagePreviewModal";
@@ -128,7 +128,12 @@ export function UploadZone({
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
+            // Only open file picker if this span is the explicitly-focused element.
+            // This prevents the global page-level Enter→Process shortcut from also
+            // triggering the file picker when files are already selected.
+            if (e.key !== "Enter" && e.key !== " ") return;
+            if (e.currentTarget !== document.activeElement) return;
+            (e.currentTarget.previousElementSibling as HTMLInputElement)?.click();
           }}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -163,14 +168,14 @@ export function UploadZone({
                   onClick={(e) => { e.stopPropagation(); removeFile(i); }}
                   aria-label={`Remove ${file.name}`}
                 >
-                  Ã—
+                  &times;
                 </button>
               </div>
             ))}
           </div>
           {showProcessHint && files.length > 0 && (
             <p style={{ marginTop: "0.4rem", fontSize: "0.65rem", color: "var(--text3)", fontFamily: "'DM Mono', monospace" }}>
-              â†“ Click &quot;Tag my trip&quot; below to start
+              &#x2193; Click &quot;Tag my trip&quot; below to start
             </p>
           )}
         </div>
@@ -185,11 +190,9 @@ export function UploadZone({
 
       {/* Privacy note */}
       <div className="tt-pcode">
-        <span className="tt-cm">{'// Your photos never leave'}</span>
+        <span className="tt-cm">{'// Your photos never leave this browser tab \u2014 ever'}</span>
         <br />
-        <span className="tt-cm">{'// this browser tab — ever'}</span>
-        <br />
-        <span style={{ color: "var(--green)" }}>âœ“ </span>No account required to start
+        <span style={{ color: "var(--green)" }}>&#x2713; </span>No account required to start
       </div>
 
       <ImagePreviewModal

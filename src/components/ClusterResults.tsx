@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClusterSummary, TaggedDetection } from "@/lib/types";
@@ -34,13 +34,13 @@ function getDragData(e: React.DragEvent): { detectionId: string; sourceClusterId
 
 function DragHandleIcon() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="9" cy="5" r="1.8" />
-      <circle cx="9" cy="12" r="1.8" />
-      <circle cx="9" cy="19" r="1.8" />
-      <circle cx="15" cy="5" r="1.8" />
-      <circle cx="15" cy="12" r="1.8" />
-      <circle cx="15" cy="19" r="1.8" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="9" cy="5" r="2.2" />
+      <circle cx="9" cy="12" r="2.2" />
+      <circle cx="9" cy="19" r="2.2" />
+      <circle cx="15" cy="5" r="2.2" />
+      <circle cx="15" cy="12" r="2.2" />
+      <circle cx="15" cy="19" r="2.2" />
     </svg>
   );
 }
@@ -92,6 +92,8 @@ export function ClusterResults({
 
   // Stagger appear animation
   const [appearedSet, setAppearedSet] = useState<Set<number>>(new Set());
+  // Expanded face count per cluster (multiples of 20)
+  const [expandCountMap, setExpandCountMap] = useState<Map<number, number>>(new Map());
   const prevClusterIdsRef = useRef<number[]>([]);
   useEffect(() => {
     const prevIds = new Set(prevClusterIdsRef.current);
@@ -277,7 +279,7 @@ export function ClusterResults({
       {/* Drag instruction */}
       {isEditable && (
         <div className="tt-drag-hint">
-          Drag faces between cards to reclassify Â· Drag a face to the edges to split into new
+          Drag faces between cards to reclassify · Drag a face to the edges to split into new
         </div>
       )}
 
@@ -338,10 +340,14 @@ export function ClusterResults({
               (isEditable && onMerge && dragOverClusterIdForCard === cluster.clusterId);
             const canMerge = isEditable && onMerge && otherClusters.length > 0;
 
-            // Mosaic: first 3, strip: 4+
-            const mosaicFaces = detections.slice(0, 3);
-            const stripFaces = detections.slice(3, 11);
-            const hiddenCount = Math.max(0, detections.length - 11);
+            // 2×3 mosaic: show up to 5 faces initially; 6th slot is +N expansion trigger
+            const MOSAIC_INIT = 5;
+            const expandCount = expandCountMap.get(cluster.clusterId) ?? 0;
+            const totalShown = Math.min(MOSAIC_INIT + expandCount, detections.length);
+            const shownDetections = detections.slice(0, totalShown);
+            const hasMore = totalShown < detections.length;
+            const remainingCount = detections.length - totalShown;
+            const isExpanded = expandCount > 0;
 
             return (
               <div
@@ -353,14 +359,14 @@ export function ClusterResults({
               >
                 {/* Mosaic header */}
                 <div className="tt-pcard-mosaic">
-                  {/* Drag handle (top-left) â€” drags the entire card */}
+                  {/* Drag handle (top-left) — drags the entire card */}
                   {canMerge && (
                     <div
                       className="tt-pcard-drag-handle"
                       draggable
                       onDragStart={(e) => handleClusterCardDragStart(e, cluster.clusterId)}
                       onDragEnd={handleClusterCardDragEnd}
-                      title="Drag onto another card to merge"
+                      title={cluster.name}
                     >
                       <DragHandleIcon />
                     </div>
@@ -369,65 +375,58 @@ export function ClusterResults({
                   {/* Face count badge */}
                   <div className="tt-pcard-count-badge">{detections.length} face{detections.length !== 1 ? "s" : ""}</div>
 
-                  {/* Mosaic cell 0 â€” spans 2 rows */}
-                  <div className="tt-mosaic-cell">
-                    {mosaicFaces[0] ? (
-                      isEditable && onAssignToCluster ? (
+                  {/* Dynamic mosaic cells — one per shown detection */}
+                  {shownDetections.map((det) =>
+                    isEditable && onAssignToCluster ? (
+                      <div key={det.id} className="tt-mosaic-cell">
                         <div
                           draggable
-                          onDragStart={(e) => handleDragStart(e, mosaicFaces[0].id, cluster.clusterId)}
+                          onDragStart={(e) => handleDragStart(e, det.id, cluster.clusterId)}
                           onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
                           style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
                         >
-                          <FaceThumbnail file={mosaicFaces[0].file} bbox={mosaicFaces[0].bbox} size={130} alt={cluster.name} className="w-full h-full object-cover" />
+                          <FaceThumbnail file={det.file} bbox={det.bbox} size={72} alt={cluster.name} className="w-full h-full object-cover" />
                         </div>
-                      ) : (
-                        <FaceThumbnail file={mosaicFaces[0].file} bbox={mosaicFaces[0].bbox} size={130} alt={cluster.name} className="w-full h-full object-cover" />
-                      )
+                      </div>
                     ) : (
-                      <div style={{ width: "100%", height: "100%", background: "var(--bg3)" }} />
-                    )}
-                  </div>
-
-                  {/* Mosaic cell 1 */}
-                  <div className="tt-mosaic-cell">
-                    {mosaicFaces[1] ? (
-                      isEditable && onAssignToCluster ? (
-                        <div
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, mosaicFaces[1].id, cluster.clusterId)}
-                          onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
-                          style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
-                        >
-                          <FaceThumbnail file={mosaicFaces[1].file} bbox={mosaicFaces[1].bbox} size={65} alt={cluster.name} className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <FaceThumbnail file={mosaicFaces[1].file} bbox={mosaicFaces[1].bbox} size={65} alt={cluster.name} className="w-full h-full object-cover" />
-                      )
-                    ) : (
-                      <div style={{ width: "100%", height: "100%", background: "var(--bg3)" }} />
-                    )}
-                  </div>
-
-                  {/* Mosaic cell 2 */}
-                  <div className="tt-mosaic-cell">
-                    {mosaicFaces[2] ? (
-                      isEditable && onAssignToCluster ? (
-                        <div
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, mosaicFaces[2].id, cluster.clusterId)}
-                          onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
-                          style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}
-                        >
-                          <FaceThumbnail file={mosaicFaces[2].file} bbox={mosaicFaces[2].bbox} size={65} alt={cluster.name} className="w-full h-full object-cover" />
-                        </div>
-                      ) : (
-                        <FaceThumbnail file={mosaicFaces[2].file} bbox={mosaicFaces[2].bbox} size={65} alt={cluster.name} className="w-full h-full object-cover" />
-                      )
-                    ) : (
-                      <div style={{ width: "100%", height: "100%", background: "var(--bg3)" }} />
-                    )}
-                  </div>
+                      <div key={det.id} className="tt-mosaic-cell">
+                        <FaceThumbnail file={det.file} bbox={det.bbox} size={72} alt={cluster.name} className="w-full h-full object-cover" />
+                      </div>
+                    )
+                  )}
+                  {/* +N expansion trigger cell */}
+                  {hasMore && (
+                    <div className="tt-mosaic-cell">
+                      <button
+                        type="button"
+                        className="tt-mosaic-more-btn"
+                        onClick={() => setExpandCountMap((m) => {
+                          const n = new Map(m);
+                          n.set(cluster.clusterId, Math.min((m.get(cluster.clusterId) ?? 0) + 20, detections.length - MOSAIC_INIT));
+                          return n;
+                        })}
+                        title="Show more faces"
+                      >
+                        +{remainingCount}
+                      </button>
+                    </div>
+                  )}
+                  {/* Full-width collapse row when all faces shown */}
+                  {isExpanded && !hasMore && (
+                    <div className="tt-mosaic-collapse-cell">
+                      <button
+                        type="button"
+                        className="tt-mosaic-collapse-inline-btn"
+                        onClick={() => setExpandCountMap((m) => {
+                          const n = new Map(m);
+                          n.delete(cluster.clusterId);
+                          return n;
+                        })}
+                      >
+                        ▲ show less
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Card body */}
@@ -439,7 +438,7 @@ export function ClusterResults({
                         type="text"
                         className="tt-pcard-name-input"
                         defaultValue={cluster.name}
-                        placeholder="Name this personâ€¦"
+                        placeholder="Name this person…"
                         onBlur={(e) => handleRenameSubmit(cluster.clusterId, e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleRenameSubmit(cluster.clusterId, (e.target as HTMLInputElement).value);
@@ -458,46 +457,20 @@ export function ClusterResults({
                         {isEditable && onRename && (
                           <button
                             type="button"
-                            className="tt-pcard-rename-btn"
+                            className="tt-pcard-edit-icon"
                             onClick={() => setEditingNameId(cluster.clusterId)}
+                            title={`Rename ${cluster.name}`}
+                            aria-label={`Rename ${cluster.name}`}
                           >
-                            rename
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
                           </button>
                         )}
                       </>
                     )}
                   </div>
-
-                  {/* Face thumb strip (faces 4+) */}
-                  {(stripFaces.length > 0 || hiddenCount > 0) && (
-                    <div className="tt-pcard-thumb-strip">
-                      {stripFaces.map(({ id, file, bbox }) =>
-                        isEditable && onAssignToCluster ? (
-                          <div
-                            key={id}
-                            className="tt-face-thumb-wrap"
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, id, cluster.clusterId)}
-                            onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
-                            title="Drag to reassign"
-                          >
-                            <FaceThumbnail file={file} bbox={bbox} size={44} alt={cluster.name} />
-                            <span
-                              style={{ position: "absolute", bottom: 2, right: 2, background: "rgba(0,0,0,0.4)", borderRadius: 4, padding: "1px 2px", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.8)" }}
-                              aria-hidden
-                            >
-                              <SmallDragIcon />
-                            </span>
-                          </div>
-                        ) : (
-                          <FaceThumbnail key={id} file={file} bbox={bbox} size={44} alt={cluster.name} />
-                        )
-                      )}
-                      {hiddenCount > 0 && (
-                        <div className="tt-thumb-more">+{hiddenCount}</div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Meta */}
                   <div className="tt-pcard-meta">
@@ -518,7 +491,7 @@ export function ClusterResults({
                           }}
                           aria-label="Merge into"
                         >
-                          <option value="">Merge intoâ€¦</option>
+                          <option value="">Merge into…</option>
                           {otherClusters
                             .filter((c) => c.clusterId !== UNCATEGORIZED_CLUSTER_ID)
                             .map((c) => (
@@ -547,7 +520,7 @@ export function ClusterResults({
         </div>
       </div>
 
-      {/* â”€â”€ Uncategorized section â”€â”€ */}
+      {/* ── Uncategorized section ── */}
       {(uncatCluster || imageIdsWithNoFaces.length > 0) && (() => {
         const uncatDetections = (uncatCluster?.detectionIds ?? [])
           .map((id) => {
