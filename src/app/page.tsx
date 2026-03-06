@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UploadZone } from "@/components/UploadZone";
 import { Layout } from "@/components/Layout";
 import { ClusterResults } from "@/components/ClusterResults";
+import { DriveConnectionCard } from "@/components/DriveConnectionCard";
 import { LiquidCanvas } from "@/components/LiquidCanvas";
 import { ParticleBackground } from "@/components/ParticleBackground";
 import { useFacePipeline } from "@/hooks/useFacePipeline";
+import { useGoogleAuth } from "@/hooks/useGoogleAuth";
 import {
   getClusterOptions,
   setClusterOptions,
@@ -171,6 +173,9 @@ export default function Home() {
   const [factIdx, setFactIdx] = useState(0);
   const [factFade, setFactFade] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
+  // JS-controlled hover state for polaroid cards prevent CSS :hover jitter from scale expanding into cursor area
+  const [hoveredPolaroid, setHoveredPolaroid] = useState<string | null>(null);
+  const polaroidLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confettiFiredRef = useRef(false);
   const stepStartTimeRef = useRef<number>(Date.now());
   const prevPhaseRef = useRef<string>("idle");
@@ -204,6 +209,14 @@ export default function Home() {
     splitCluster,
     assignDetectionsToCluster,
   } = useFacePipeline();
+  const {
+    status: authStatus,
+    user: authUser,
+    error: authError,
+    isBusy: authBusy,
+    signIn,
+    signOut,
+  } = useGoogleAuth();
 
   const filesById = useMemo(() => {
     const m = new Map<string, File>();
@@ -328,7 +341,7 @@ export default function Home() {
     const rate = progress.current / elapsed;
     const remaining = (progress.total - progress.current) / rate;
     return formatEta(remaining);
-  }, [progress.current, progress.total]);
+  }, [progress]);
 
   /* Result stats */
   const namedClusters = clusters.filter((c) => c.clusterId !== 0);
@@ -337,9 +350,36 @@ export default function Home() {
   const uncatCount = (uncatCluster?.detectionIds.length ?? 0) + imageIdsWithNoFaces.length;
 
   const fact = FACTS[factIdx];
+  const driveConnected = authStatus === "authenticated";
+
+  const navActions = (
+    <button
+      type="button"
+      className={`tt-nav-auth-btn${driveConnected ? " tt-nav-auth-btn--connected" : ""}`}
+      onClick={() => {
+        if (driveConnected) {
+          void signOut();
+          return;
+        }
+        void signIn();
+      }}
+      disabled={authBusy || authStatus === "loading"}
+    >
+      <span className={`tt-nav-auth-dot${driveConnected ? " tt-nav-auth-dot--connected" : ""}`} />
+      <span>
+        {authStatus === "loading"
+          ? "Checking Drive…"
+          : driveConnected
+            ? authUser?.email ?? "Drive connected"
+            : authBusy
+              ? "Connecting…"
+              : "Connect Drive"}
+      </span>
+    </button>
+  );
 
   return (
-    <Layout onLogoClick={() => { if (!showLanding) { reset(); setFiles([]); setShowLanding(true); } }}>
+    <Layout onLogoClick={() => { if (!showLanding) { reset(); setFiles([]); setShowLanding(true); } }} navActions={navActions}>
       <ParticleBackground visible={showLanding} />
       {/* ------------------------------------------
           SCREEN 0 — LANDING
@@ -356,7 +396,7 @@ export default function Home() {
               <div className="tt-hleft">
                 <div className="tt-eyebrow">
                   <svg width="7" height="7" viewBox="0 0 10 10" fill="currentColor" aria-hidden><circle cx="5" cy="5" r="5" /></svg>
-                  Privacy-first &middot; On-device AI &middot; Zero uploads
+                  Privacy-first &middot; On-device AI &middot; Zero photo uploads
                 </div>
                 <h1 className="tt-headline">
                   Sort your trip<br />
@@ -365,18 +405,18 @@ export default function Home() {
                 </h1>
                 <p className="tt-subtext">
                   AI-powered face clustering that lives entirely in your browser tab.
-                  No uploads. No accounts. No creepy storage.
+                  No photo uploads. Optional Google Drive sign-in for export. No creepy storage.
                 </p>
                 <div className="tt-badges">
-                  <div className="tt-badge"><IcoBan /> 0 server calls</div>
+                  <div className="tt-badge"><IcoBan /> 0 photo uploads</div>
                   <div className="tt-badge"><IcoPhone /> 100% on-device</div>
                   <div className="tt-badge"><IcoFolder /> &#8734; photos local</div>
-                  <div className="tt-badge"><IcoUser /> No account needed</div>
+                  <div className="tt-badge"><IcoUser /> Drive sign-in optional</div>
                 </div>
                 <div className="tt-stats">
                   <div>
                     <div className="tt-stat-n">0</div>
-                    <div className="tt-stat-l">Server Calls</div>
+                    <div className="tt-stat-l">Photo Uploads</div>
                   </div>
                   <div>
                     <div className="tt-stat-n tt-stat-n--sys">&#8734;</div>
@@ -392,19 +432,31 @@ export default function Home() {
               {/* RIGHT: polaroid strip + CTA card */}
               <div className="tt-hright">
                 <div className="tt-polaroid-strip">
-                  <div className="tt-polaroid tt-polaroid--a">
+                  <div
+                    className={`tt-polaroid tt-polaroid--a${hoveredPolaroid === 'a' ? ' tt-polaroid--hovered' : ''}`}
+                    onMouseEnter={() => { if (polaroidLeaveTimerRef.current) clearTimeout(polaroidLeaveTimerRef.current); setHoveredPolaroid('a'); }}
+                    onMouseLeave={() => { polaroidLeaveTimerRef.current = setTimeout(() => setHoveredPolaroid(null), 120); }}
+                  >
                     <div className="tt-polaroid-face" style={{ background: "linear-gradient(145deg, #EAC890, #D4A460)" }}>
                       <IcoFaceSilhouette fill="rgba(110,60,10,0.22)" />
                     </div>
                     <div className="tt-polaroid-label">Alex</div>
                   </div>
-                  <div className="tt-polaroid tt-polaroid--b">
+                  <div
+                    className={`tt-polaroid tt-polaroid--b${hoveredPolaroid === 'b' ? ' tt-polaroid--hovered' : ''}`}
+                    onMouseEnter={() => { if (polaroidLeaveTimerRef.current) clearTimeout(polaroidLeaveTimerRef.current); setHoveredPolaroid('b'); }}
+                    onMouseLeave={() => { polaroidLeaveTimerRef.current = setTimeout(() => setHoveredPolaroid(null), 120); }}
+                  >
                     <div className="tt-polaroid-face" style={{ background: "linear-gradient(145deg, #C0D4E8, #9AB4CC)" }}>
                       <IcoFaceSilhouette fill="rgba(30,60,100,0.22)" />
                     </div>
                     <div className="tt-polaroid-label">Sam</div>
                   </div>
-                  <div className="tt-polaroid tt-polaroid--c">
+                  <div
+                    className={`tt-polaroid tt-polaroid--c${hoveredPolaroid === 'c' ? ' tt-polaroid--hovered' : ''}`}
+                    onMouseEnter={() => { if (polaroidLeaveTimerRef.current) clearTimeout(polaroidLeaveTimerRef.current); setHoveredPolaroid('c'); }}
+                    onMouseLeave={() => { polaroidLeaveTimerRef.current = setTimeout(() => setHoveredPolaroid(null), 120); }}
+                  >
                     <div className="tt-polaroid-face" style={{ background: "linear-gradient(145deg, #C8E4BC, #A8C898)" }}>
                       <IcoFaceSilhouette fill="rgba(20,70,20,0.22)" />
                     </div>
@@ -416,7 +468,7 @@ export default function Home() {
                   <div className="tt-cta-card-eyebrow">Start in seconds</div>
                   <div className="tt-cta-card-title">Drop your photos,<br />get results instantly</div>
                   <p className="tt-cta-card-sub">
-                    Zero config. Zero uploads. Results in your browser as fast as your device can process.
+                    Zero config. Zero photo uploads. Results in your browser as fast as your device can process.
                   </p>
                   <button
                     type="button"
@@ -426,7 +478,7 @@ export default function Home() {
                     Try it free, no sign up
                   </button>
                   <div className="tt-trust-row">
-                    <div className="tt-trust-item"><IcoShield /> No uploads</div>
+                    <div className="tt-trust-item"><IcoShield /> No photo uploads</div>
                     <div className="tt-trust-item"><IcoLock /> No storage</div>
                     <div className="tt-trust-item"><IcoEyeOff /> No tracking</div>
                   </div>
@@ -468,15 +520,15 @@ export default function Home() {
                 <div className="tt-priv-headline">Your photos <em>never</em><br />leave your device</div>
                 <p className="tt-priv-text">
                   Every byte of your data is processed right inside this browser tab. The ML models run entirely in
-                  WebAssembly. No server calls, no cloud storage, no fine print.
+                  WebAssembly. Your photos never hit our server, and optional Drive auth only stores an encrypted token.
                 </p>
               </div>
               <div className="tt-priv-list">
                 {([
-                  { Icon: IcoBan, label: "Zero server calls", desc: "HTTP requests stop at model download. After that, silence." },
+                  { Icon: IcoBan, label: "Zero photo uploads", desc: "Photos never touch our server. Only optional Google auth requests leave the page." },
                   { Icon: IcoLock, label: "No persistent storage", desc: "Nothing written to disk, IndexedDB, or any server. Refresh and it's gone." },
                   { Icon: IcoEyeOff, label: "No tracking", desc: "No analytics, no telemetry, no third-party scripts phoning home." },
-                  { Icon: IcoUser, label: "No account required", desc: "Open the page, drop photos, get results. That's it." },
+                  { Icon: IcoUser, label: "No account required to tag", desc: "Open the page, drop photos, get results. Google sign-in is only for Drive export." },
                 ] as const).map((item, i) => (
                   <div key={i} className="tt-priv-item">
                     <div className="tt-priv-item-ico"><item.Icon /></div>
@@ -526,6 +578,19 @@ export default function Home() {
               {error}
             </div>
           )}
+
+          <DriveConnectionCard
+            status={authStatus}
+            user={authUser}
+            error={authError}
+            busy={authBusy}
+            onConnect={() => {
+              void signIn();
+            }}
+            onDisconnect={() => {
+              void signOut();
+            }}
+          />
 
           {/* Advanced settings */}
           <details className="tt-adv-details">
@@ -642,6 +707,7 @@ export default function Home() {
                 activeStep === i ? "active" : activeStep > i ? "done" : "idle";
               const isActiveStep = state === "active";
               const barPct = state === "done" ? 100 : isActiveStep && pct !== null ? pct : 0;
+              const isIndeterminate = isActiveStep && pct === null;
               return (
                 <div
                   key={i}
@@ -660,7 +726,10 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="tt-pbar-track">
-                    <div className="tt-pbar-fill" style={{ width: `${barPct}%` }} />
+                    <div
+                      className={`tt-pbar-fill${isIndeterminate ? " tt-pbar-fill--indeterminate" : ""}`}
+                      style={isIndeterminate ? undefined : { width: `${barPct}%` }}
+                    />
                   </div>
                   {isActiveStep && (
                     <div className="tt-prog-meta">
@@ -709,8 +778,8 @@ export default function Home() {
             </div>
             <div className="tt-sum-div" />
             <div className="tt-sum-item">
-              <div className="tt-sum-n">0</div>
-              <div className="tt-sum-l">Server calls</div>
+              <div className="tt-sum-n">{driveConnected ? "Ready" : "Optional"}</div>
+              <div className="tt-sum-l">Drive session</div>
             </div>
             <button
               type="button"
@@ -724,6 +793,20 @@ export default function Home() {
               New scan
             </button>
           </div>
+
+          <DriveConnectionCard
+            compact
+            status={authStatus}
+            user={authUser}
+            error={authError}
+            busy={authBusy}
+            onConnect={() => {
+              void signIn();
+            }}
+            onDisconnect={() => {
+              void signOut();
+            }}
+          />
 
           {clusters.length === 0 ? (
             <div style={{ padding: "2rem 0.5rem", color: "var(--text3)", fontFamily: "'DM Mono', monospace", fontSize: "0.82rem" }}>

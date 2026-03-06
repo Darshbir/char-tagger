@@ -137,6 +137,53 @@ body::before {
 }
 @keyframes tt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
+.tt-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.tt-nav-auth-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 34px;
+  padding: 0.42rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  color: var(--text2);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.76rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background 0.2s;
+}
+.tt-nav-auth-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent2) 44%, transparent);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow) 24%, transparent);
+}
+.tt-nav-auth-btn:disabled {
+  cursor: wait;
+  opacity: 0.78;
+}
+.tt-nav-auth-btn--connected {
+  background: color-mix(in srgb, var(--green) 14%, var(--surface));
+  color: var(--text);
+}
+
+.tt-nav-auth-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text3) 78%, transparent);
+}
+.tt-nav-auth-dot--connected {
+  background: var(--green);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--green) 18%, transparent);
+}
+
 .tt-theme-btn {
   width: 34px; height: 34px;
   border-radius: 50%;
@@ -525,7 +572,9 @@ body::before {
 .tt-polaroid--a { transform: rotate(-7deg) translate(-72px, -12px); z-index: 1; }
 .tt-polaroid--b { transform: rotate(4deg) translate(72px, 14px); z-index: 2; }
 .tt-polaroid--c { transform: rotate(-1.5deg) translate(0, -18px); z-index: 3; }
-.tt-polaroid--a:hover, .tt-polaroid--b:hover, .tt-polaroid--c:hover { transform: rotate(0deg) translateY(-6px) scale(1.06) !important; z-index: 10 !important; }
+/* CSS :hover removed to prevent jitter when scale expansion moves card geometry under cursor.
+   Hover state is driven by JS (onMouseEnter/onMouseLeave with 120ms debounce) instead. */
+.tt-polaroid--hovered { transform: rotate(0deg) translateY(-6px) scale(1.06) !important; z-index: 10 !important; }
 .tt-polaroid-face {
   width: 100%;
   aspect-ratio: 1;
@@ -1071,8 +1120,18 @@ body::before {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--accent), var(--accent2));
-  transition: width 0.35s linear;
+  /* No transition so the bar stays in sync with the % text at all times */
   width: 0%;
+}
+.tt-pbar-fill--indeterminate {
+  width: 100% !important;
+  background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), var(--accent), transparent);
+  background-size: 200% 100%;
+  animation: tt-pbar-shimmer 1.4s linear infinite;
+}
+@keyframes tt-pbar-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 .tt-step--done .tt-pbar-fill {
   background: linear-gradient(90deg, var(--green), var(--green2));
@@ -1175,6 +1234,142 @@ body::before {
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .tt-btn-new-scan:hover { transform: translateY(-1px); box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+.tt-drive-card {
+  width: min(100%, 960px);
+  margin: 0 0 1rem;
+  padding: 1.05rem 1.15rem;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent2) 26%, var(--border));
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--shadow) 18%, transparent);
+  display: grid;
+  gap: 0.9rem;
+}
+
+.tt-drive-card--compact {
+  width: 100%;
+  margin-bottom: 1.25rem;
+}
+
+.tt-drive-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.tt-drive-card__copy {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.tt-drive-card__eyebrow {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text3);
+  font-weight: 600;
+}
+
+.tt-drive-card__title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.32rem;
+  color: var(--text);
+  line-height: 1.05;
+}
+
+.tt-drive-card__desc {
+  margin: 0;
+  max-width: 48rem;
+  color: var(--text2);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.tt-drive-card__badge {
+  flex-shrink: 0;
+  padding: 0.38rem 0.78rem;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text3);
+  background: var(--pill-bg);
+}
+
+.tt-drive-card__badge--connected {
+  color: color-mix(in srgb, var(--green) 72%, var(--text));
+  border-color: color-mix(in srgb, var(--green) 34%, transparent);
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+}
+
+.tt-drive-card__badge--loading {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--accent2) 22%, transparent);
+}
+
+.tt-drive-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.tt-drive-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 42px;
+  padding: 0.72rem 1.15rem;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  color: #FFF8F0;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.tt-drive-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 32px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.tt-drive-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.tt-drive-btn--secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  box-shadow: none;
+}
+
+.tt-drive-card__meta {
+  color: var(--text3);
+  font-size: 0.82rem;
+}
+
+.tt-drive-card__error {
+  padding: 0.72rem 0.9rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, #b91c1c 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, #dc2626 28%, transparent);
+  color: color-mix(in srgb, #fca5a5 80%, var(--text));
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
 
 /* ── LIGHT MODE GOLDEN TINGE (results) ── */
 [data-theme="light"] .tt-screen--results {
@@ -1585,17 +1780,22 @@ body::before {
 .tt-create-zone--bottom {
   position: relative;
   width: 100%;
-  height: 80px;
+  min-height: 104px;
+  padding: 0.75rem 1rem;
   border-radius: 16px;
   border: 2px dashed transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 0.75rem;
+  margin-top: 1rem;
   transition: all 0.3s;
   writing-mode: horizontal-tb;
 }
-.tt-create-zone--bottom .tt-create-zone-label { writing-mode: horizontal-tb; }
+.tt-create-zone--bottom .tt-create-zone-label {
+  writing-mode: horizontal-tb;
+  font-size: 0.9rem;
+  padding: 0 1rem;
+}
 
 /* Bottom create-new zone — hidden on desktop/mouse devices, shown on touch */
 .tt-create-zone--desktop-hide {
@@ -1670,4 +1870,9 @@ body::before {
   .tt-footer { padding: 1.25rem; flex-direction: column; align-items: flex-start; gap: 0.4rem; }
   .tt-upload-solo { padding: 2rem 1rem 1.5rem; }
   .tt-btn-go--lg { max-width: 100%; }
+  .tt-nav-actions { gap: 0.45rem; }
+  .tt-nav-auth-btn { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tt-drive-card { padding: 1rem; }
+  .tt-drive-card__header { flex-direction: column; }
+  .tt-drive-card__actions { align-items: stretch; }
 }

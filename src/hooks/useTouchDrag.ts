@@ -14,6 +14,40 @@ const LONG_PRESS_MS = 400;
  * a drag initiation (pixels, Euclidean distance).
  */
 const SCROLL_CANCEL_PX = 8;
+const TOUCH_DRAG_SCROLL_EDGE_THRESHOLD = 240;
+const TOUCH_DRAG_SCROLL_BASE_SPEED = 20;
+
+function getTouchDragScrollContainer(): HTMLElement | null {
+  return document.querySelector(".tt-screen--results") as HTMLElement | null;
+}
+
+function scrollTouchDragContainerBy(delta: number) {
+  const container = getTouchDragScrollContainer();
+  if (container && container.scrollHeight > container.clientHeight) {
+    container.scrollBy({ top: delta, behavior: "auto" });
+    return;
+  }
+  window.scrollBy({ top: delta, behavior: "auto" });
+}
+
+function getTouchAutoScrollDelta(clientY: number): number {
+  if (!Number.isFinite(clientY)) return 0;
+
+  const clampedTopY = Math.max(0, clientY);
+
+  if (clampedTopY < TOUCH_DRAG_SCROLL_EDGE_THRESHOLD) {
+    const intensity = 1 - clampedTopY / TOUCH_DRAG_SCROLL_EDGE_THRESHOLD;
+    return -Math.max(14, Math.round(TOUCH_DRAG_SCROLL_BASE_SPEED + intensity * 18));
+  }
+
+  const bottomThreshold = window.innerHeight - TOUCH_DRAG_SCROLL_EDGE_THRESHOLD;
+  if (clientY > bottomThreshold) {
+    const intensity = (clientY - bottomThreshold) / TOUCH_DRAG_SCROLL_EDGE_THRESHOLD;
+    return Math.max(14, Math.round(TOUCH_DRAG_SCROLL_BASE_SPEED + intensity * 18));
+  }
+
+  return 0;
+}
 
 interface TouchDragCallbacks {
   onAssignToCluster?: (detectionIds: string[], targetClusterId: number) => void;
@@ -231,10 +265,8 @@ export function useTouchDrag({
         const now = Date.now();
         if (now - lastScrollRef.current >= 16) {
           lastScrollRef.current = now;
-          const EDGE = 80;
-          const SPEED = 14;
-          if (touch.clientY < EDGE) window.scrollBy({ top: -SPEED, behavior: "auto" });
-          else if (touch.clientY > window.innerHeight - EDGE) window.scrollBy({ top: SPEED, behavior: "auto" });
+          const delta = getTouchAutoScrollDelta(touch.clientY);
+          if (delta !== 0) scrollTouchDragContainerBy(delta);
         }
       },
       onTouchEnd: () => {
@@ -245,8 +277,12 @@ export function useTouchDrag({
         }
         const data = faceDragDataRef.current;
         if (overCreateNewRef.current === "uncategorized") {
-          // Bottom zone — send to Uncategorized
-          cbRef.current.onAssignToCluster?.([data.detectionId], UNCATEGORIZED_CLUSTER_ID);
+          // Bottom zone: create new person if source is already uncategorized, else move to uncategorized
+          if (data.sourceClusterId === UNCATEGORIZED_CLUSTER_ID) {
+            cbRef.current.onSplit?.(data.sourceClusterId, [data.detectionId], undefined);
+          } else {
+            cbRef.current.onAssignToCluster?.([data.detectionId], UNCATEGORIZED_CLUSTER_ID);
+          }
         } else if (overCreateNewRef.current) {
           // Left / right zones — create new character
           cbRef.current.onSplit?.(
@@ -309,10 +345,8 @@ export function useTouchDrag({
         const now = Date.now();
         if (now - lastScrollRef.current >= 16) {
           lastScrollRef.current = now;
-          const EDGE = 80;
-          const SPEED = 14;
-          if (touch.clientY < EDGE) window.scrollBy({ top: -SPEED, behavior: "auto" });
-          else if (touch.clientY > window.innerHeight - EDGE) window.scrollBy({ top: SPEED, behavior: "auto" });
+          const delta = getTouchAutoScrollDelta(touch.clientY);
+          if (delta !== 0) scrollTouchDragContainerBy(delta);
         }
       },
       onTouchEnd: () => {

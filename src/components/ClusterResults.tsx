@@ -11,9 +11,41 @@ const DRAG_TYPE = "application/x-char-tagger-detection";
 const DRAG_TYPE_CLUSTER = "application/x-char-tagger-cluster";
 const IMAGE_DRAG_TYPE = "application/x-char-tagger-image";
 
-const DRAG_SCROLL_EDGE_THRESHOLD = 80;
-const DRAG_SCROLL_SPEED = 14;
+const DRAG_SCROLL_EDGE_THRESHOLD = 240;
+const DRAG_SCROLL_SPEED = 20;
 const DRAG_SCROLL_THROTTLE_MS = 16;
+
+function getDragScrollContainer(): HTMLElement | null {
+  return document.querySelector(".tt-screen--results") as HTMLElement | null;
+}
+
+function scrollDragContainerBy(delta: number) {
+  const container = getDragScrollContainer();
+  if (container && container.scrollHeight > container.clientHeight) {
+    container.scrollBy({ top: delta, behavior: "auto" });
+    return;
+  }
+  window.scrollBy({ top: delta, behavior: "auto" });
+}
+
+function getAutoScrollDelta(clientY: number): number {
+  if (!Number.isFinite(clientY)) return 0;
+
+  const clampedTopY = Math.max(0, clientY);
+
+  if (clampedTopY < DRAG_SCROLL_EDGE_THRESHOLD) {
+    const intensity = 1 - clampedTopY / DRAG_SCROLL_EDGE_THRESHOLD;
+    return -Math.max(14, Math.round(DRAG_SCROLL_SPEED + intensity * 18));
+  }
+
+  const bottomThreshold = window.innerHeight - DRAG_SCROLL_EDGE_THRESHOLD;
+  if (clientY > bottomThreshold) {
+    const intensity = (clientY - bottomThreshold) / DRAG_SCROLL_EDGE_THRESHOLD;
+    return Math.max(14, Math.round(DRAG_SCROLL_SPEED + intensity * 18));
+  }
+
+  return 0;
+}
 
 function getClusterDragData(e: React.DragEvent): number | null {
   const raw = e.dataTransfer.getData(DRAG_TYPE_CLUSTER);
@@ -98,6 +130,7 @@ export const ClusterResults = memo(function ClusterResults({
   const [imageClusterMap, setImageClusterMap] = useState<Map<string, number>>(new Map());
   const [imageDragSrcId, setImageDragSrcId] = useState<string | null>(null);
   const dragScrollLastRef = useRef(0);
+  const dragClientYRef = useRef<number | null>(null);
 
   const {
     isTouchDraggingFace,
@@ -130,24 +163,42 @@ export const ClusterResults = memo(function ClusterResults({
 
   // Auto-scroll while dragging
   useEffect(() => {
-    const active = dragSourceClusterId !== null || dragSourceClusterIdForCard !== null;
+    const active =
+      dragSourceClusterId !== null ||
+      dragSourceClusterIdForCard !== null ||
+      imageDragSrcId !== null;
     if (!active) return;
-    const onDragOver = (e: DragEvent) => {
-      e.preventDefault();
+
+    const tick = () => {
       const now = Date.now();
       if (now - dragScrollLastRef.current < DRAG_SCROLL_THROTTLE_MS) return;
-      const y = e.clientY;
-      if (y < DRAG_SCROLL_EDGE_THRESHOLD) {
+      const y = dragClientYRef.current;
+      if (y == null) return;
+      const delta = getAutoScrollDelta(y);
+      if (delta !== 0) {
         dragScrollLastRef.current = now;
-        window.scrollBy({ top: -DRAG_SCROLL_SPEED, behavior: "auto" });
-      } else if (y > window.innerHeight - DRAG_SCROLL_EDGE_THRESHOLD) {
-        dragScrollLastRef.current = now;
-        window.scrollBy({ top: DRAG_SCROLL_SPEED, behavior: "auto" });
+        scrollDragContainerBy(delta);
       }
     };
-    document.addEventListener("dragover", onDragOver, false);
-    return () => document.removeEventListener("dragover", onDragOver, false);
-  }, [dragSourceClusterId, dragSourceClusterIdForCard]);
+
+    const onDragMove = (e: DragEvent) => {
+      if (Number.isFinite(e.clientY)) {
+        dragClientYRef.current = e.clientY;
+      }
+      tick();
+    };
+
+    const intervalId = window.setInterval(tick, DRAG_SCROLL_THROTTLE_MS);
+    document.addEventListener("dragover", onDragMove, false);
+    document.addEventListener("drag", onDragMove, false);
+
+    return () => {
+      window.clearInterval(intervalId);
+      dragClientYRef.current = null;
+      document.removeEventListener("dragover", onDragMove, false);
+      document.removeEventListener("drag", onDragMove, false);
+    };
+  }, [dragSourceClusterId, dragSourceClusterIdForCard, imageDragSrcId]);
 
   const handleRenameSubmit = useCallback(
     (clusterId: number, value: string) => {
@@ -180,6 +231,7 @@ export const ClusterResults = memo(function ClusterResults({
     (e: React.DragEvent, detectionId: string, sourceClusterId: number) => {
       e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ detectionId, sourceClusterId }));
       e.dataTransfer.effectAllowed = "move";
+      dragClientYRef.current = e.clientY;
       setDragSourceClusterId(sourceClusterId);
     },
     []
@@ -211,18 +263,24 @@ export const ClusterResults = memo(function ClusterResults({
     [onSplit]
   );
 
-  // Bottom zone — sends face to Uncategorized instead of creating a new character
-  const handleDropToUncategorized = useCallback(
+  // Bottom zone — context-aware: create new person when source is uncategorized, else move to uncategorized
+  const handleBottomZoneDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOverCreateNewSide(null);
       setDragOverClusterId(null);
       setDragSourceClusterId(null);
       const data = getDragData(e);
-      if (!data || !onAssignToCluster || data.sourceClusterId === UNCATEGORIZED_CLUSTER_ID) return;
-      onAssignToCluster([data.detectionId], UNCATEGORIZED_CLUSTER_ID);
+      if (!data) return;
+      if (data.sourceClusterId === UNCATEGORIZED_CLUSTER_ID) {
+        // Already uncategorized → split into a new named person
+        if (onSplit) onSplit(data.sourceClusterId, [data.detectionId], undefined);
+      } else {
+        // Named cluster → send to uncategorized
+        if (onAssignToCluster) onAssignToCluster([data.detectionId], UNCATEGORIZED_CLUSTER_ID);
+      }
     },
-    [onAssignToCluster]
+    [onAssignToCluster, onSplit]
   );
 
   const handleDragOver = useCallback(
@@ -256,12 +314,14 @@ export const ClusterResults = memo(function ClusterResults({
   const handleClusterCardDragStart = useCallback((e: React.DragEvent, sourceClusterId: number) => {
     e.dataTransfer.setData(DRAG_TYPE_CLUSTER, String(sourceClusterId));
     e.dataTransfer.effectAllowed = "move";
+    dragClientYRef.current = e.clientY;
     setDragSourceClusterIdForCard(sourceClusterId);
     setDragSourceClusterId(null);
     setDragOverCreateNewSide(null);
   }, []);
 
   const handleClusterCardDragEnd = useCallback(() => {
+    dragClientYRef.current = null;
     setDragSourceClusterIdForCard(null);
     setDragOverClusterIdForCard(null);
   }, []);
@@ -314,6 +374,14 @@ export const ClusterResults = memo(function ClusterResults({
   const isEditable = Boolean(onRename || onMerge || onSplit || onAssignToCluster);
   const anyDraggingFace =
     (dragSourceClusterId !== null && dragSourceClusterIdForCard === null) || isTouchDraggingFace;
+
+  // Determine if the currently dragged face originates from the uncategorized cluster
+  const touchDragSourceClusterId = isTouchDraggingFace && touchDragFaceId
+    ? (taggedByKey.get(touchDragFaceId)?.clusterId ?? null)
+    : null;
+  const dragFromUncategorized =
+    dragSourceClusterId === UNCATEGORIZED_CLUSTER_ID ||
+    touchDragSourceClusterId === UNCATEGORIZED_CLUSTER_ID;
   const anyDraggingCard = dragSourceClusterIdForCard !== null || isTouchDraggingCard;
   const anyDraggingImage = imageDragSrcId !== null;
   // No-face images that haven't been manually assigned yet
@@ -452,7 +520,7 @@ export const ClusterResults = memo(function ClusterResults({
                         <div
                           draggable
                           onDragStart={(e) => handleDragStart(e, det.id, cluster.clusterId)}
-                          onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
+                          onDragEnd={() => { dragClientYRef.current = null; setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
                           {...makeFaceTouchHandlers(det.id, cluster.clusterId)}
                           style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", opacity: touchDragFaceId === det.id ? 0.45 : 1, transition: "opacity 0.15s" }}
                         >
@@ -493,9 +561,10 @@ export const ClusterResults = memo(function ClusterResults({
                           onDragStart={(e) => {
                             e.dataTransfer.setData(IMAGE_DRAG_TYPE, imgId);
                             e.dataTransfer.effectAllowed = "move";
+                            dragClientYRef.current = e.clientY;
                             setImageDragSrcId(imgId);
                           }}
-                          onDragEnd={() => { setImageDragSrcId(null); setDragOverClusterId(null); }}
+                          onDragEnd={() => { dragClientYRef.current = null; setImageDragSrcId(null); setDragOverClusterId(null); }}
                           style={{ cursor: "grab", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", opacity: imageDragSrcId === imgId ? 0.45 : 1, transition: "opacity 0.15s" }}
                           title="Drag back to uncategorized"
                         >
@@ -540,12 +609,6 @@ export const ClusterResults = memo(function ClusterResults({
                           }}
                           autoFocus
                         />
-                        {duplicateWarnId === cluster.clusterId && (
-                          <span style={{ fontSize: "0.72rem", color: "var(--accent)", marginTop: "0.2rem", display: "block", fontFamily: "'DM Mono', monospace" }}
-                            title="Another character already has this name">
-                            ⚠ duplicate name
-                          </span>
-                        )}
                       </>
                     ) : (
                       <>
@@ -557,6 +620,7 @@ export const ClusterResults = memo(function ClusterResults({
                             onDragStart={(e) => {
                               e.dataTransfer.setData("application/x-char-tagger-cluster", String(cluster.clusterId));
                               e.dataTransfer.effectAllowed = "move";
+                              dragClientYRef.current = e.clientY;
                               const ghost = document.createElement("div");
                               ghost.textContent = cluster.name;
                               ghost.style.cssText = "position:fixed;top:-9999px;left:-9999px;padding:6px 16px;background:var(--surface,#1a1a1a);color:var(--text,#fff);border:1px solid var(--border);border-radius:10px;font-size:0.9rem;font-family:'Playfair Display',serif;white-space:nowrap;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.3);";
@@ -598,6 +662,14 @@ export const ClusterResults = memo(function ClusterResults({
                       </>
                     )}
                   </div>
+
+                  {/* Duplicate name warning — shown after rename is confirmed, outside edit mode */}
+                  {duplicateWarnId === cluster.clusterId && (
+                    <span style={{ fontSize: "0.72rem", color: "var(--accent)", marginTop: "0.15rem", marginBottom: "0.1rem", display: "block", fontFamily: "'DM Mono', monospace" }}
+                      title="Another character has this name — it may cause confusion">
+                      ⚠ same name as another person — saved anyway
+                    </span>
+                  )}
 
                   {/* Meta */}
                   <div className="tt-pcard-meta">
@@ -646,19 +718,23 @@ export const ClusterResults = memo(function ClusterResults({
           })}
         </div>
 
-        {/* Bottom drop zone — sends face to Uncategorized (mobile); sides create new character */}
-        {isEditable && onAssignToCluster && (
+        {/* Bottom drop zone — visible on both desktop and mobile.
+             If drag originates from uncategorized: creates a new person.
+             If drag originates from a named cluster: moves face to uncategorized. */}
+        {isEditable && (onAssignToCluster || onSplit) && (
           <div
             data-create-zone="uncategorized"
-            className={`tt-create-zone tt-create-zone--bottom tt-create-zone--desktop-hide ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "uncategorized" || touchOverCreateNew === "uncategorized" ? "tt-create-zone--hover" : ""}`}
+            className={`tt-create-zone tt-create-zone--bottom ${anyDraggingFace ? "tt-create-zone--visible" : ""} ${dragOverCreateNewSide === "uncategorized" || touchOverCreateNew === "uncategorized" ? "tt-create-zone--hover" : ""}`}
             style={{ pointerEvents: anyDraggingFace ? "auto" : "none" }}
             onDragOver={(e) => handleDragOverCreateNew(e, "uncategorized")}
             onDragLeave={handleDragLeaveCreateNew}
-            onDrop={handleDropToUncategorized}
+            onDrop={handleBottomZoneDrop}
           >
             {anyDraggingFace && (
               <span className="tt-create-zone-label">
-                {dragOverCreateNewSide === "uncategorized" || touchOverCreateNew === "uncategorized" ? "Move to Uncategorized" : "Drop to uncategorize"}
+                {dragOverCreateNewSide === "uncategorized" || touchOverCreateNew === "uncategorized"
+                  ? (dragFromUncategorized ? "Create new person" : "Move to Uncategorized")
+                  : (dragFromUncategorized ? "Drop to create new" : "Drop to uncategorize")}
               </span>
             )}
           </div>
@@ -728,7 +804,7 @@ export const ClusterResults = memo(function ClusterResults({
                     <div
                       draggable
                       onDragStart={(e) => handleDragStart(e, id, UNCATEGORIZED_CLUSTER_ID)}
-                      onDragEnd={() => { setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
+                      onDragEnd={() => { dragClientYRef.current = null; setDragOverClusterId(null); setDragSourceClusterId(null); setDragOverCreateNewSide(null); }}
                       {...makeFaceTouchHandlers(id, UNCATEGORIZED_CLUSTER_ID)}
                       style={{ width: "100%", height: "100%", cursor: "grab", opacity: touchDragFaceId === id ? 0.45 : 1, transition: "opacity 0.15s" }}
                     >
@@ -752,9 +828,10 @@ export const ClusterResults = memo(function ClusterResults({
                     onDragStart={(e) => {
                       e.dataTransfer.setData(IMAGE_DRAG_TYPE, imageId);
                       e.dataTransfer.effectAllowed = "move";
+                        dragClientYRef.current = e.clientY;
                       setImageDragSrcId(imageId);
                     }}
-                    onDragEnd={() => { setImageDragSrcId(null); setDragOverClusterId(null); }}
+                    onDragEnd={() => { dragClientYRef.current = null; setImageDragSrcId(null); setDragOverClusterId(null); }}
                   >
                     <div style={{ opacity: imageDragSrcId === imageId ? 0.45 : 1, transition: "opacity 0.15s", width: "100%", height: "100%" }}>
                       <FullImageThumbnail file={file} size={72} alt="No face detected" />

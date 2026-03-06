@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "TripTag — Sort trip photos by person, privately.",
   description:
-    "AI-powered face clustering that lives entirely in your browser tab. No uploads. No accounts. No creepy storage.",
+    "AI-powered face clustering that lives entirely in your browser tab. No photo uploads to our server, optional Google Drive sign-in for export.",
 };
 
 export default function RootLayout({
