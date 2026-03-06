@@ -14,8 +14,8 @@ const LONG_PRESS_MS = 400;
  * a drag initiation (pixels, Euclidean distance).
  */
 const SCROLL_CANCEL_PX = 8;
-const TOUCH_DRAG_SCROLL_EDGE_THRESHOLD = 240;
-const TOUCH_DRAG_SCROLL_BASE_SPEED = 20;
+const TOUCH_DRAG_SCROLL_EDGE_THRESHOLD = 120;
+const TOUCH_DRAG_SCROLL_BASE_SPEED = 10;
 
 function getTouchDragScrollContainer(): HTMLElement | null {
   return document.querySelector(".tt-screen--results") as HTMLElement | null;
@@ -37,13 +37,13 @@ function getTouchAutoScrollDelta(clientY: number): number {
 
   if (clampedTopY < TOUCH_DRAG_SCROLL_EDGE_THRESHOLD) {
     const intensity = 1 - clampedTopY / TOUCH_DRAG_SCROLL_EDGE_THRESHOLD;
-    return -Math.max(14, Math.round(TOUCH_DRAG_SCROLL_BASE_SPEED + intensity * 18));
+    return -Math.max(8, Math.round(TOUCH_DRAG_SCROLL_BASE_SPEED + intensity * 10));
   }
 
   const bottomThreshold = window.innerHeight - TOUCH_DRAG_SCROLL_EDGE_THRESHOLD;
   if (clientY > bottomThreshold) {
     const intensity = (clientY - bottomThreshold) / TOUCH_DRAG_SCROLL_EDGE_THRESHOLD;
-    return Math.max(14, Math.round(TOUCH_DRAG_SCROLL_BASE_SPEED + intensity * 18));
+    return Math.max(8, Math.round(TOUCH_DRAG_SCROLL_BASE_SPEED + intensity * 10));
   }
 
   return 0;

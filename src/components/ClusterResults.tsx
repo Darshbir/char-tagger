@@ -11,8 +11,8 @@ const DRAG_TYPE = "application/x-char-tagger-detection";
 const DRAG_TYPE_CLUSTER = "application/x-char-tagger-cluster";
 const IMAGE_DRAG_TYPE = "application/x-char-tagger-image";
 
-const DRAG_SCROLL_EDGE_THRESHOLD = 240;
-const DRAG_SCROLL_SPEED = 20;
+const DRAG_SCROLL_EDGE_THRESHOLD = 120;
+const DRAG_SCROLL_SPEED = 10;
 const DRAG_SCROLL_THROTTLE_MS = 16;
 
 function getDragScrollContainer(): HTMLElement | null {
@@ -35,13 +35,13 @@ function getAutoScrollDelta(clientY: number): number {
 
   if (clampedTopY < DRAG_SCROLL_EDGE_THRESHOLD) {
     const intensity = 1 - clampedTopY / DRAG_SCROLL_EDGE_THRESHOLD;
-    return -Math.max(14, Math.round(DRAG_SCROLL_SPEED + intensity * 18));
+    return -Math.max(8, Math.round(DRAG_SCROLL_SPEED + intensity * 10));
   }
 
   const bottomThreshold = window.innerHeight - DRAG_SCROLL_EDGE_THRESHOLD;
   if (clientY > bottomThreshold) {
     const intensity = (clientY - bottomThreshold) / DRAG_SCROLL_EDGE_THRESHOLD;
-    return Math.max(14, Math.round(DRAG_SCROLL_SPEED + intensity * 18));
+    return Math.max(8, Math.round(DRAG_SCROLL_SPEED + intensity * 10));
   }
 
   return 0;
