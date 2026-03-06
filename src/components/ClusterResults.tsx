@@ -97,21 +97,36 @@ interface ClusterResultsProps {
   tagged: TaggedDetection[];
   filesById: Map<string, File>;
   imageIdsWithNoFaces?: string[];
+  imageClusterMap?: Map<string, number>;
   onRename?: (clusterId: number, name: string) => void;
   onMerge?: (sourceClusterId: number, targetClusterId: number) => void;
   onSplit?: (clusterId: number, detectionIdsToMove: string[], targetClusterId?: number) => void;
   onAssignToCluster?: (detectionIds: string[], targetClusterId: number) => void;
+  onAssignImageToCluster?: (imageId: string, targetClusterId: number) => void;
+  onClearImageAssignment?: (imageId: string) => void;
 }
+
+const INITIAL_UNCATEGORIZED_VISIBLE = 60;
+const UNCATEGORIZED_VISIBLE_STEP = 60;
+
+type DetectionCardData = {
+  id: string;
+  file: File;
+  bbox: TaggedDetection["bbox"];
+};
 
 export const ClusterResults = memo(function ClusterResults({
   clusters,
   tagged,
   filesById,
   imageIdsWithNoFaces = [],
+  imageClusterMap = new Map(),
   onRename,
   onMerge,
   onSplit,
   onAssignToCluster,
+  onAssignImageToCluster,
+  onClearImageAssignment,
 }: ClusterResultsProps) {
   const taggedByKey = useMemo(() => {
     const m = new Map<string, TaggedDetection>();
@@ -126,8 +141,6 @@ export const ClusterResults = memo(function ClusterResults({
   const [dragOverCreateNewSide, setDragOverCreateNewSide] = useState<"left" | "right" | "uncategorized" | null>(null);
   const [dragSourceClusterIdForCard, setDragSourceClusterIdForCard] = useState<number | null>(null);
   const [dragOverClusterIdForCard, setDragOverClusterIdForCard] = useState<number | null>(null);
-  // Full-image (no-face) manual assignment — local UI state only
-  const [imageClusterMap, setImageClusterMap] = useState<Map<string, number>>(new Map());
   const [imageDragSrcId, setImageDragSrcId] = useState<string | null>(null);
   const dragScrollLastRef = useRef(0);
   const dragClientYRef = useRef<number | null>(null);
@@ -147,6 +160,7 @@ export const ClusterResults = memo(function ClusterResults({
   const [appearedSet, setAppearedSet] = useState<Set<number>>(new Set());
   // Expanded face count per cluster (multiples of 20)
   const [expandCountMap, setExpandCountMap] = useState<Map<number, number>>(new Map());
+  const [uncategorizedVisibleCount, setUncategorizedVisibleCount] = useState(INITIAL_UNCATEGORIZED_VISIBLE);
   const prevClusterIdsRef = useRef<number[]>([]);
   useEffect(() => {
     const prevIds = new Set(prevClusterIdsRef.current);
@@ -369,8 +383,6 @@ export const ClusterResults = memo(function ClusterResults({
     if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCreateNewSide(null);
   }, []);
 
-  if (clusters.length === 0) return null;
-
   const isEditable = Boolean(onRename || onMerge || onSplit || onAssignToCluster);
   const anyDraggingFace =
     (dragSourceClusterId !== null && dragSourceClusterIdForCard === null) || isTouchDraggingFace;
@@ -390,6 +402,48 @@ export const ClusterResults = memo(function ClusterResults({
   // Separate named clusters from uncategorized
   const namedClusters = clusters.filter((c) => c.clusterId !== UNCATEGORIZED_CLUSTER_ID);
   const uncatCluster = clusters.find((c) => c.clusterId === UNCATEGORIZED_CLUSTER_ID);
+  const detectionsByClusterId = useMemo(() => {
+    const next = new Map<number, DetectionCardData[]>();
+
+    for (const cluster of clusters) {
+      const detections: DetectionCardData[] = [];
+      for (const id of cluster.detectionIds) {
+        const t = taggedByKey.get(id);
+        if (!t) continue;
+        const file = filesById.get(t.imageId);
+        if (!file) continue;
+        detections.push({ id, file, bbox: t.bbox });
+      }
+      next.set(cluster.clusterId, detections);
+    }
+
+    return next;
+  }, [clusters, taggedByKey, filesById]);
+
+  const assignedImageIdsByClusterId = useMemo(() => {
+    const next = new Map<number, string[]>();
+    imageClusterMap.forEach((clusterId, imageId) => {
+      const imageIds = next.get(clusterId);
+      if (imageIds) {
+        imageIds.push(imageId);
+      } else {
+        next.set(clusterId, [imageId]);
+      }
+    });
+    return next;
+  }, [imageClusterMap]);
+
+  const uncategorizedDetections = useMemo(
+    () => detectionsByClusterId.get(UNCATEGORIZED_CLUSTER_ID) ?? [],
+    [detectionsByClusterId]
+  );
+  const totalUncategorizedItems = uncategorizedDetections.length + unassignedNoFaceIds.length;
+
+  useEffect(() => {
+    setUncategorizedVisibleCount((prev) => Math.min(Math.max(prev, INITIAL_UNCATEGORIZED_VISIBLE), Math.max(totalUncategorizedItems, INITIAL_UNCATEGORIZED_VISIBLE)));
+  }, [totalUncategorizedItems]);
+
+  if (clusters.length === 0) return null;
 
   return (
     <div>
@@ -443,15 +497,7 @@ export const ClusterResults = memo(function ClusterResults({
           className="tt-persons-grid"
         >
           {namedClusters.map((cluster) => {
-            const detections = cluster.detectionIds
-              .map((id) => {
-                const t = taggedByKey.get(id);
-                if (!t) return null;
-                const file = filesById.get(t.imageId);
-                if (!file) return null;
-                return { id, file, bbox: t.bbox };
-              })
-              .filter((d): d is NonNullable<typeof d> => d !== null);
+            const detections = detectionsByClusterId.get(cluster.clusterId) ?? [];
 
             const otherClusters = clusters.filter((c) => c.clusterId !== cluster.clusterId);
             const isDropTarget =
@@ -464,9 +510,7 @@ export const ClusterResults = memo(function ClusterResults({
               (anyDraggingImage && dragOverClusterId === cluster.clusterId);
             const canMerge = isEditable && onMerge && otherClusters.length > 0;
             // Full images manually assigned to this cluster
-            const assignedImageIds = Array.from(imageClusterMap.entries())
-              .filter(([, cid]) => cid === cluster.clusterId)
-              .map(([imgId]) => imgId);
+            const assignedImageIds = assignedImageIdsByClusterId.get(cluster.clusterId) ?? [];
 
             // Show up to 6 faces; +N slot only appears when total > 6
             const MOSAIC_SHOW = 6;
@@ -502,7 +546,7 @@ export const ClusterResults = memo(function ClusterResults({
                   const imgId = e.dataTransfer.getData(IMAGE_DRAG_TYPE);
                   if (imgId) {
                     e.preventDefault();
-                    setImageClusterMap((prev) => { const m = new Map(prev); m.set(imgId, cluster.clusterId); return m; });
+                    onAssignImageToCluster?.(imgId, cluster.clusterId);
                     setImageDragSrcId(null);
                     setDragOverClusterId(null);
                     return;
@@ -743,18 +787,12 @@ export const ClusterResults = memo(function ClusterResults({
 
       {/* ── Uncategorized section ── */}
       {(uncatCluster || imageIdsWithNoFaces.length > 0) && (() => {
-        const uncatDetections = (uncatCluster?.detectionIds ?? [])
-          .map((id) => {
-            const t = taggedByKey.get(id);
-            if (!t) return null;
-            const file = filesById.get(t.imageId);
-            if (!file) return null;
-            return { id, file, bbox: t.bbox };
-          })
-          .filter((d): d is NonNullable<typeof d> => d !== null);
+        if (totalUncategorizedItems === 0) return null;
 
-        const totalUncat = uncatDetections.length + unassignedNoFaceIds.length;
-        if (totalUncat === 0) return null;
+        const visibleUncatDetections = uncategorizedDetections.slice(0, Math.min(uncategorizedVisibleCount, uncategorizedDetections.length));
+        const remainingVisibleSlots = Math.max(0, uncategorizedVisibleCount - visibleUncatDetections.length);
+        const visibleUnassignedNoFaceIds = unassignedNoFaceIds.slice(0, remainingVisibleSlots);
+        const hiddenUncategorizedCount = Math.max(0, totalUncategorizedItems - visibleUncatDetections.length - visibleUnassignedNoFaceIds.length);
 
         const isUncatDrop =
           uncatCluster &&
@@ -781,7 +819,7 @@ export const ClusterResults = memo(function ClusterResults({
             const imgId = e.dataTransfer.getData(IMAGE_DRAG_TYPE);
             if (imgId) {
               e.preventDefault();
-              setImageClusterMap((prev) => { const m = new Map(prev); m.delete(imgId); return m; });
+              onClearImageAssignment?.(imgId);
               setImageDragSrcId(null);
               setDragOverClusterId(null);
               return;
@@ -791,10 +829,10 @@ export const ClusterResults = memo(function ClusterResults({
           >
             <div className="tt-unid-title">
               Uncategorized
-              <span className="tt-unid-count">{totalUncat}</span>
+              <span className="tt-unid-count">{totalUncategorizedItems}</span>
             </div>
             <div className="tt-unid-strip">
-              {uncatDetections.map(({ id, file, bbox }) => (
+              {visibleUncatDetections.map(({ id, file, bbox }) => (
                 <div
                   key={id}
                   className={`tt-unid-chip ${isUncatDrop ? "tt-unid-chip--drop" : ""}`}
@@ -815,7 +853,7 @@ export const ClusterResults = memo(function ClusterResults({
                   )}
                 </div>
               ))}
-              {unassignedNoFaceIds.map((imageId) => {
+              {visibleUnassignedNoFaceIds.map((imageId) => {
                 const file = filesById.get(imageId);
                 if (!file) return null;
                 return (
@@ -839,6 +877,29 @@ export const ClusterResults = memo(function ClusterResults({
                   </div>
                 );
               })}
+              {hiddenUncategorizedCount > 0 && (
+                <button
+                  type="button"
+                  className="tt-mosaic-more-btn"
+                  style={{ minWidth: 72, minHeight: 72 }}
+                  onClick={() => {
+                    setUncategorizedVisibleCount((prev) => Math.min(prev + UNCATEGORIZED_VISIBLE_STEP, totalUncategorizedItems));
+                  }}
+                  title="Show more uncategorized items"
+                >
+                  +{hiddenUncategorizedCount}
+                </button>
+              )}
+              {totalUncategorizedItems > INITIAL_UNCATEGORIZED_VISIBLE && hiddenUncategorizedCount === 0 && (
+                <button
+                  type="button"
+                  className="tt-mosaic-collapse-inline-btn"
+                  style={{ alignSelf: "center" }}
+                  onClick={() => setUncategorizedVisibleCount(INITIAL_UNCATEGORIZED_VISIBLE)}
+                >
+                  ▲ show less
+                </button>
+              )}
             </div>
           </div>
         );  // end inner IIFE

@@ -5,10 +5,25 @@ import { UploadZone } from "@/components/UploadZone";
 import { Layout } from "@/components/Layout";
 import { ClusterResults } from "@/components/ClusterResults";
 import { DriveConnectionCard } from "@/components/DriveConnectionCard";
+import { DriveExportModal } from "@/components/DriveExportModal";
+import { DriveExportResults } from "@/components/DriveExportResults";
 import { LiquidCanvas } from "@/components/LiquidCanvas";
 import { ParticleBackground } from "@/components/ParticleBackground";
 import { useFacePipeline } from "@/hooks/useFacePipeline";
 import { useGoogleAuth } from "@/hooks/useGoogleAuth";
+import {
+  buildDriveExportManifest,
+  ensureAnyoneReaderPermission,
+  ensureDriveFolder,
+  ensureDriveShortcut,
+  ensureUploadedFile,
+  formatBytes,
+  getDriveItemLink,
+  type DriveExportResultSummary,
+  type DriveExportSessionResponse,
+  type DriveQuotaSummary,
+  withDriveRetry,
+} from "@/lib/driveExport";
 import {
   getClusterOptions,
   setClusterOptions,
@@ -170,6 +185,19 @@ export default function Home() {
   const [clusterMethod, setClusterMethod] = useState<ClusterMethod>("dbscan");
   const [kmeansK, setKmeansK] = useState(5);
   const [detector, setDetector] = useState<FaceDetectorType>("retinaface");
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [quota, setQuota] = useState<DriveQuotaSummary | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
+  const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportStatusMessage, setExportStatusMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
+  const [exportSummary, setExportSummary] = useState<DriveExportResultSummary | null>(null);
+  const [resultsView, setResultsView] = useState<"clusters" | "export">("clusters");
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [nameDrafts, setNameDrafts] = useState<Record<number, string>>({});
   const [factIdx, setFactIdx] = useState(0);
   const [factFade, setFactFade] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
@@ -190,6 +218,16 @@ export default function Home() {
   }, [showLanding]);
 
   useEffect(() => {
+    if (!copiedLinkId && !copyToast) return;
+    const timeoutId = window.setTimeout(() => {
+      setCopiedLinkId(null);
+      setCopyToast(null);
+    }, 2200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedLinkId, copyToast]);
+
+  useEffect(() => {
     const opts = getClusterOptions();
     setClusterMethod(opts.method);
     setKmeansK(opts.k ?? 5);
@@ -201,13 +239,18 @@ export default function Home() {
     tagged,
     clusters,
     imageIdsWithNoFaces,
+    reviewedClusterIds,
+    imageAssignments,
     error,
     runPipeline,
     reset,
     setClusterName,
+    markClustersReviewed,
     mergeClusters,
     splitCluster,
     assignDetectionsToCluster,
+    assignImageToCluster,
+    clearImageAssignment,
   } = useFacePipeline();
   const {
     status: authStatus,
@@ -217,6 +260,7 @@ export default function Home() {
     signIn,
     signOut,
   } = useGoogleAuth();
+  const driveConnected = authStatus === "authenticated";
 
   const filesById = useMemo(() => {
     const m = new Map<string, File>();
@@ -224,8 +268,294 @@ export default function Home() {
     return m;
   }, [files]);
 
+  const exportPreviewClusters = useMemo(
+    () =>
+      clusters.map((cluster) => ({
+        ...cluster,
+        name: nameDrafts[cluster.clusterId] ?? cluster.name,
+      })),
+    [clusters, nameDrafts]
+  );
+
+  const exportManifest = useMemo(
+    () =>
+      buildDriveExportManifest({
+        clusters: exportPreviewClusters,
+        tagged,
+        filesById,
+        reviewedClusterIds,
+        imageAssignments,
+      }),
+    [exportPreviewClusters, tagged, filesById, reviewedClusterIds, imageAssignments]
+  );
+
+  const fetchDriveExportSession = useCallback(async () => {
+    const response = await fetch("/api/drive/export/session", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error || "Unable to prepare Google Drive export.");
+    }
+
+    return (await response.json()) as DriveExportSessionResponse;
+  }, []);
+
+  useEffect(() => {
+    if (!isExportModalOpen) return;
+    setNameDrafts((prev) => {
+      const next = { ...prev };
+      for (const item of exportManifest.needsReview) {
+        if (next[item.clusterId] == null) {
+          next[item.clusterId] = item.currentName;
+        }
+      }
+      return next;
+    });
+  }, [exportManifest.needsReview, isExportModalOpen]);
+
+  useEffect(() => {
+    if (!isExportModalOpen || !driveConnected) return;
+    let ignore = false;
+    setQuotaLoading(true);
+    setQuotaError(null);
+
+    void fetchDriveExportSession()
+      .then((session) => {
+        if (ignore) return;
+        setQuota(session.quota);
+      })
+      .catch((caughtError) => {
+        if (ignore) return;
+        const message = caughtError instanceof Error ? caughtError.message : "Unable to check Drive storage right now.";
+        setQuota(null);
+        setQuotaError(message);
+      })
+      .finally(() => {
+        if (!ignore) setQuotaLoading(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [driveConnected, fetchDriveExportSession, isExportModalOpen]);
+
+  const handleOpenExportModal = useCallback(() => {
+    setExportError(null);
+    setExportSuccessMessage(null);
+    setExportStatusMessage(null);
+    setQuotaError(null);
+    if (!driveConnected) {
+      setQuota(null);
+    }
+    setIsExportModalOpen(true);
+  }, [driveConnected]);
+
+  const handleExportNameChange = useCallback((clusterId: number, value: string) => {
+    setNameDrafts((prev) => ({
+      ...prev,
+      [clusterId]: value,
+    }));
+  }, []);
+
+  const handleConnectDriveForExport = useCallback(async () => {
+    const connected = await signIn();
+    if (!connected) return;
+    setQuotaError(null);
+  }, [signIn]);
+
+  const handleCopyExportLink = useCallback(async (id: string, url: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLinkId(id);
+      setCopyToast(`${label} link copied`);
+    } catch {
+      setCopiedLinkId(id);
+      setCopyToast(`Could not auto-copy ${label.toLowerCase()} link`);
+    }
+  }, []);
+
+  const handleExportToDrive = useCallback(async () => {
+    if (exportManifest.characters.length === 0) {
+      setExportError("Nothing is ready to export yet. Name at least one character with photos first.");
+      return;
+    }
+
+    setExportBusy(true);
+    setExportError(null);
+    setExportSuccessMessage(null);
+    setExportStatusMessage("Preparing export…");
+
+    try {
+      const unchangedReviewedIds: number[] = [];
+      for (const item of exportManifest.needsReview) {
+        const nextName = (nameDrafts[item.clusterId] ?? item.currentName).trim();
+        const currentCluster = clusters.find((cluster) => cluster.clusterId === item.clusterId);
+        const currentName = currentCluster?.name ?? item.currentName;
+        if (nextName && nextName !== currentName) {
+          setClusterName(item.clusterId, nextName);
+        } else {
+          unchangedReviewedIds.push(item.clusterId);
+        }
+      }
+      if (unchangedReviewedIds.length > 0) {
+        markClustersReviewed(unchangedReviewedIds);
+      }
+
+      const session = await fetchDriveExportSession();
+      setQuota(session.quota);
+
+      if (!session.quota.isUnlimited && session.quota.availableBytes != null && session.quota.availableBytes < exportManifest.totalBytes) {
+        throw new Error(`Google Drive only has ${formatBytes(session.quota.availableBytes)} free, but this export needs about ${formatBytes(exportManifest.totalBytes)}.`);
+      }
+
+      setExportStatusMessage("Creating or reusing Drive folders…");
+      const rootFolder = await withDriveRetry("Root folder setup", () =>
+        ensureDriveFolder(session.accessToken, {
+          name: exportManifest.rootFolderName,
+          appProperties: {
+            ttExportKey: exportManifest.exportKey,
+            ttFolderRole: "root",
+          },
+        })
+      );
+      const allFolder = await withDriveRetry("All folder setup", () =>
+        ensureDriveFolder(session.accessToken, {
+          name: "All",
+          parentId: rootFolder.id,
+          appProperties: {
+            ttExportKey: exportManifest.exportKey,
+            ttFolderRole: "all",
+          },
+        })
+      );
+
+      const folderByClusterId = new Map<number, { id: string; name: string; webViewLink: string }>();
+      for (const character of exportManifest.characters) {
+        const folder = await withDriveRetry(`Folder setup for ${character.folderName}`, () =>
+          ensureDriveFolder(session.accessToken, {
+            name: character.folderName,
+            parentId: rootFolder.id,
+            appProperties: {
+              ttExportKey: exportManifest.exportKey,
+              ttFolderRole: `cluster-${character.clusterId}`,
+            },
+          })
+        );
+        folderByClusterId.set(character.clusterId, folder);
+      }
+
+      setExportStatusMessage("Updating share settings…");
+      await withDriveRetry("Root folder sharing", () => ensureAnyoneReaderPermission(session.accessToken, rootFolder.id));
+      await withDriveRetry("All folder sharing", () => ensureAnyoneReaderPermission(session.accessToken, allFolder.id));
+      for (const character of exportManifest.characters) {
+        const folder = folderByClusterId.get(character.clusterId);
+        if (!folder) continue;
+        await withDriveRetry(`Sharing ${character.folderName}`, () => ensureAnyoneReaderPermission(session.accessToken, folder.id));
+      }
+
+      setExportStatusMessage(`Uploading ${exportManifest.allImageIds.length} original photo${exportManifest.allImageIds.length === 1 ? "" : "s"} to All…`);
+      const uploadedFileIdByImageId = new Map<string, string>();
+      let uploadedCount = 0;
+      for (const imageId of exportManifest.allImageIds) {
+        const file = filesById.get(imageId);
+        if (!file) continue;
+        const uploaded = await withDriveRetry(`Upload ${file.name}`, () =>
+          ensureUploadedFile(session.accessToken, {
+            file,
+            parentId: allFolder.id,
+            appProperties: {
+              ttExportKey: exportManifest.exportKey,
+              ttSourceImageId: imageId,
+            },
+          })
+        );
+        uploadedFileIdByImageId.set(imageId, uploaded.id);
+        uploadedCount += 1;
+        setExportStatusMessage(`Uploaded ${uploadedCount} of ${exportManifest.allImageIds.length} originals…`);
+      }
+
+      const totalShortcuts = exportManifest.characters.reduce((sum, character) => sum + character.imageIds.length, 0);
+      let createdShortcuts = 0;
+      for (const character of exportManifest.characters) {
+        const folder = folderByClusterId.get(character.clusterId);
+        if (!folder) continue;
+        for (const imageId of character.imageIds) {
+          const targetId = uploadedFileIdByImageId.get(imageId);
+          const file = filesById.get(imageId);
+          if (!targetId || !file) continue;
+          await withDriveRetry(`Shortcut ${file.name} for ${character.folderName}`, () =>
+            ensureDriveShortcut(session.accessToken, {
+              name: file.name,
+              targetId,
+              parentId: folder.id,
+              appProperties: {
+                ttExportKey: exportManifest.exportKey,
+                ttShortcutClusterId: String(character.clusterId),
+                ttShortcutImageId: imageId,
+              },
+            })
+          );
+          createdShortcuts += 1;
+          setExportStatusMessage(`Created ${createdShortcuts} of ${totalShortcuts} shortcuts…`);
+        }
+      }
+
+      setExportStatusMessage("Loading shareable links…");
+      const rootLink = await withDriveRetry("Root folder link", () => getDriveItemLink(session.accessToken, rootFolder.id));
+      const allLink = await withDriveRetry("All folder link", () => getDriveItemLink(session.accessToken, allFolder.id));
+      const characterLinks = [] as DriveExportResultSummary["characters"];
+      for (const character of exportManifest.characters) {
+        const folder = folderByClusterId.get(character.clusterId);
+        if (!folder) continue;
+        const link = await withDriveRetry(`Link for ${character.folderName}`, () => getDriveItemLink(session.accessToken, folder.id));
+        characterLinks.push({
+          id: link.id,
+          name: character.folderName,
+          url: link.webViewLink,
+          clusterId: character.clusterId,
+          fileCount: character.fileCount,
+        });
+      }
+
+      setExportStatusMessage(null);
+      setExportSuccessMessage(`Export finished. Uploaded ${uploadedCount} original photo${uploadedCount === 1 ? "" : "s"} into “All” and created ${createdShortcuts} shortcut${createdShortcuts === 1 ? "" : "s"} inside ${exportManifest.characters.length} character folder${exportManifest.characters.length === 1 ? "" : "s"}.`);
+      setExportSummary({
+        rootFolder: {
+          id: rootLink.id,
+          name: rootLink.name,
+          url: rootLink.webViewLink,
+        },
+        allFolder: {
+          id: allLink.id,
+          name: allLink.name,
+          url: allLink.webViewLink,
+        },
+        characters: characterLinks,
+        totalBytes: exportManifest.totalBytes,
+        uploadedCount,
+        shortcutCount: createdShortcuts,
+      });
+      setResultsView("export");
+      setIsExportModalOpen(false);
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : "Drive export failed.";
+      setExportStatusMessage(null);
+      setExportError(message);
+    } finally {
+      setExportBusy(false);
+    }
+  }, [clusters, exportManifest, fetchDriveExportSession, filesById, markClustersReviewed, nameDrafts, setClusterName]);
+
   const handleProcess = useCallback(() => {
     confettiFiredRef.current = false;
+    setExportSummary(null);
+    setResultsView("clusters");
+    setCopiedLinkId(null);
+    setCopyToast(null);
     const payload = files.map((file, i) => ({ id: String(i), file }));
     runPipeline(payload, { detector });
   }, [files, detector, runPipeline]);
@@ -235,6 +565,18 @@ export default function Home() {
     reset();
     setFiles([]);
     setShowLanding(false);
+    setIsExportModalOpen(false);
+    setQuota(null);
+    setQuotaError(null);
+    setExportBusy(false);
+    setExportStatusMessage(null);
+    setExportError(null);
+    setExportSuccessMessage(null);
+    setExportSummary(null);
+    setResultsView("clusters");
+    setCopiedLinkId(null);
+    setCopyToast(null);
+    setNameDrafts({});
   }, [reset]);
 
   /* Track step start times for ETA */
@@ -325,8 +667,10 @@ export default function Home() {
     progress.phase === "detecting" ||
     progress.phase === "embedding" ||
     progress.phase === "clustering";
-  const showResults = progress.phase === "done";
-  const showUpload = !showLanding && !isProcessing && !showResults;
+  const hasCompletedPipeline = progress.phase === "done";
+  const showResults = hasCompletedPipeline && resultsView === "clusters";
+  const showExportResults = hasCompletedPipeline && resultsView === "export" && exportSummary !== null;
+  const showUpload = !showLanding && !isProcessing && !hasCompletedPipeline;
 
   const activeStep = phaseToStepIndex(progress.phase);
   const pct =
@@ -350,7 +694,6 @@ export default function Home() {
   const uncatCount = (uncatCluster?.detectionIds.length ?? 0) + imageIdsWithNoFaces.length;
 
   const fact = FACTS[factIdx];
-  const driveConnected = authStatus === "authenticated";
 
   const navActions = (
     <button
@@ -784,6 +1127,20 @@ export default function Home() {
             <button
               type="button"
               className="tt-btn-new-scan"
+              onClick={handleOpenExportModal}
+              disabled={namedClusters.length === 0 || exportBusy}
+              title={namedClusters.length === 0 ? "Name at least one person before exporting" : "Export to Google Drive"}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {exportBusy ? "Exporting…" : "Export"}
+            </button>
+            <button
+              type="button"
+              className="tt-btn-new-scan"
               onClick={handleReset}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -818,14 +1175,49 @@ export default function Home() {
               tagged={tagged}
               filesById={filesById}
               imageIdsWithNoFaces={imageIdsWithNoFaces}
+              imageClusterMap={imageAssignments}
               onRename={setClusterName}
               onMerge={mergeClusters}
               onSplit={splitCluster}
               onAssignToCluster={assignDetectionsToCluster}
+              onAssignImageToCluster={assignImageToCluster}
+              onClearImageAssignment={clearImageAssignment}
             />
           )}
         </div>
       </div>
+
+      <div className={`tt-screen tt-screen--results ${!showExportResults ? "tt-screen--hidden" : ""}`}>
+        {exportSummary ? (
+          <DriveExportResults
+            summary={exportSummary}
+            onBack={() => setResultsView("clusters")}
+            onNewScan={handleReset}
+            onCopyLink={handleCopyExportLink}
+            copiedLinkId={copiedLinkId}
+            copyToast={copyToast}
+          />
+        ) : null}
+      </div>
+
+      <DriveExportModal
+        isOpen={isExportModalOpen}
+        manifest={exportManifest.characters.length > 0 ? exportManifest : null}
+        nameDrafts={nameDrafts}
+        onNameChange={handleExportNameChange}
+        onClose={() => setIsExportModalOpen(false)}
+        onConnectDrive={handleConnectDriveForExport}
+        onExport={handleExportToDrive}
+        authStatus={authStatus}
+        authBusy={authBusy}
+        quota={quota}
+        quotaLoading={quotaLoading}
+        quotaError={quotaError}
+        exportBusy={exportBusy}
+        exportStatusMessage={exportStatusMessage}
+        exportError={exportError}
+        exportSuccessMessage={exportSuccessMessage}
+      />
     </Layout>
   );
 }

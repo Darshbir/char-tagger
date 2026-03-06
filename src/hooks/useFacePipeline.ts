@@ -8,6 +8,7 @@ import type { PipelineProgressUpdate } from "@/lib/facePipeline";
 import type { FaceDetectorType } from "@/lib/constants";
 import { clusterDetections, getClusterOptions, type ClusterOptions } from "@/lib/clustering";
 import { UNCATEGORIZED_CLUSTER_ID } from "@/lib/constants";
+import { getDefaultClusterName } from "@/lib/driveExport";
 
 /** Ensure cluster 0 (Uncategorized) is always in the list so user can assign to it. */
 function normalizeClusters(clusters: ClusterSummary[], names: Map<number, string>): ClusterSummary[] {
@@ -45,6 +46,8 @@ export function useFacePipeline() {
 
   /** Persist custom cluster names across edit actions */
   const [clusterNames, setClusterNames] = useState<Map<number, string>>(new Map());
+  const [reviewedClusterIds, setReviewedClusterIds] = useState<Set<number>>(new Set());
+  const [imageAssignments, setImageAssignments] = useState<Map<string, number>>(new Map());
 
   /** Pre-warm the default detector on mount so first run is faster */
   useEffect(() => {
@@ -113,9 +116,11 @@ export function useFacePipeline() {
       setTagged(newTagged);
       setClusters(newClusters);
       setImageIdsWithNoFaces(noFaceIds);
+      setImageAssignments(new Map());
       const names = new Map<number, string>();
       for (const c of newClusters) names.set(c.clusterId, c.name);
       setClusterNames(names);
+      setReviewedClusterIds(new Set());
       setProgress({
         phase: "done",
         message: `Done. ${newClusters.length} character${newClusters.length !== 1 ? "s" : ""} found.`,
@@ -130,6 +135,8 @@ export function useFacePipeline() {
     setClusters([]);
     setImageIdsWithNoFaces([]);
     setClusterNames(new Map());
+    setReviewedClusterIds(new Set());
+    setImageAssignments(new Map());
     setError(null);
   }, []);
 
@@ -141,8 +148,18 @@ export function useFacePipeline() {
       return next;
     });
     setClusters((prev) =>
-      prev.map((c) => (c.clusterId === clusterId ? { ...c, name: trimmed || c.name } : c))
+      prev.map((c) => (c.clusterId === clusterId ? { ...c, name: trimmed || getDefaultClusterName(clusterId) } : c))
     );
+    setReviewedClusterIds((prev) => new Set(prev).add(clusterId));
+  }, []);
+
+  const markClustersReviewed = useCallback((clusterIds: number[]) => {
+    if (clusterIds.length === 0) return;
+    setReviewedClusterIds((prev) => {
+      const next = new Set(prev);
+      clusterIds.forEach((clusterId) => next.add(clusterId));
+      return next;
+    });
   }, []);
 
   const mergeClusters = useCallback((sourceId: number, targetId: number) => {
@@ -150,6 +167,17 @@ export function useFacePipeline() {
     setTagged((prev) =>
       prev.map((t) => (t.clusterId === sourceId ? { ...t, clusterId: targetId } : t))
     );
+    setImageAssignments((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      next.forEach((clusterId, imageId) => {
+        if (clusterId === sourceId) {
+          next.set(imageId, targetId);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
     setClusters((prev) => {
       const next = prev.filter((c) => c.clusterId !== sourceId);
       const target = next.find((c) => c.clusterId === targetId);
@@ -157,6 +185,12 @@ export function useFacePipeline() {
       const source = prev.find((c) => c.clusterId === sourceId);
       const mergedIds = [...target.detectionIds, ...(source?.detectionIds ?? [])];
       return next.map((c) => (c.clusterId === targetId ? { ...c, detectionIds: mergedIds } : c));
+    });
+    setReviewedClusterIds((prev) => {
+      if (!prev.has(sourceId)) return prev;
+      const next = new Set(prev);
+      next.delete(sourceId);
+      return next;
     });
   }, []);
 
@@ -184,7 +218,7 @@ export function useFacePipeline() {
                 ...prev,
                 {
                   clusterId: newId,
-                  name: `Character ${newId}`,
+                  name: getDefaultClusterName(newId),
                   detectionIds: detectionIdsToMove,
                 },
               ]
@@ -196,7 +230,12 @@ export function useFacePipeline() {
                 return { ...c, detectionIds: [...c.detectionIds, ...detectionIdsToMove] };
               });
         if (targetClusterId == null) {
-          setClusterNames((n) => new Map(n).set(newId, `Character ${newId}`));
+          setClusterNames((n) => new Map(n).set(newId, getDefaultClusterName(newId)));
+          setReviewedClusterIds((prevReviewed) => {
+            const nextReviewed = new Set(prevReviewed);
+            nextReviewed.delete(newId);
+            return nextReviewed;
+          });
           return withNew
             .map((c) => (c.clusterId === clusterId ? { ...c, detectionIds: c.detectionIds.filter((id) => !idsSet.has(id)) } : c))
             .filter((c) => c.detectionIds.length > 0 || c.clusterId === UNCATEGORIZED_CLUSTER_ID);
@@ -233,15 +272,20 @@ export function useFacePipeline() {
       } else {
         updates.set(targetClusterId, {
           clusterId: targetClusterId,
-          name: targetClusterId === UNCATEGORIZED_CLUSTER_ID ? "Uncategorized" : `Character ${targetClusterId}`,
+          name: getDefaultClusterName(targetClusterId),
           detectionIds: [...detectionIds],
         });
         setClusterNames((n) =>
           new Map(n).set(
             targetClusterId,
-            targetClusterId === UNCATEGORIZED_CLUSTER_ID ? "Uncategorized" : `Character ${targetClusterId}`
+            getDefaultClusterName(targetClusterId)
           )
         );
+        setReviewedClusterIds((prevReviewed) => {
+          const nextReviewed = new Set(prevReviewed);
+          nextReviewed.delete(targetClusterId);
+          return nextReviewed;
+        });
       }
       let out = Array.from(updates.values());
       if (!out.some((c) => c.clusterId === UNCATEGORIZED_CLUSTER_ID)) {
@@ -250,6 +294,27 @@ export function useFacePipeline() {
       return out
         .sort((a, b) => a.clusterId - b.clusterId)
         .filter((c) => c.detectionIds.length > 0 || c.clusterId === UNCATEGORIZED_CLUSTER_ID);
+    });
+  }, []);
+
+  const assignImageToCluster = useCallback((imageId: string, targetClusterId: number) => {
+    setImageAssignments((prev) => {
+      const next = new Map(prev);
+      if (targetClusterId === UNCATEGORIZED_CLUSTER_ID) {
+        next.delete(imageId);
+      } else {
+        next.set(imageId, targetClusterId);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearImageAssignment = useCallback((imageId: string) => {
+    setImageAssignments((prev) => {
+      if (!prev.has(imageId)) return prev;
+      const next = new Map(prev);
+      next.delete(imageId);
+      return next;
     });
   }, []);
 
@@ -263,13 +328,18 @@ export function useFacePipeline() {
     tagged,
     clusters: clustersNormalized,
     imageIdsWithNoFaces,
+    reviewedClusterIds,
+    imageAssignments,
     error,
     modelsLoaded,
     runPipeline,
     reset,
     setClusterName,
+    markClustersReviewed,
     mergeClusters,
     splitCluster,
     assignDetectionsToCluster,
+    assignImageToCluster,
+    clearImageAssignment,
   };
 }
