@@ -799,7 +799,7 @@ body::before {
 }
 @media (max-width: 640px) {
   .tt-footer { grid-template-columns: 1fr; text-align: center; }
-  .tt-footer-coffee { justify-self: center !important; }
+  .tt-footer-actions { justify-self: center; }
 }
 .tt-footer-logo {
   font-family: 'Playfair Display', serif;
@@ -818,8 +818,13 @@ body::before {
   font-family: 'DM Mono', monospace;
   text-align: center;
 }
-.tt-footer-coffee {
+.tt-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   justify-self: end;
+}
+.tt-footer-coffee {
   font-size: 0.73rem;
   color: var(--accent2);
   font-family: 'DM Mono', monospace;
@@ -831,6 +836,92 @@ body::before {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+.tt-footer-link {
+  font-size: 0.73rem;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s, color 0.2s;
+}
+.tt-footer-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── PRIVACY PAGE ── */
+.tt-privacy {
+  padding: calc(var(--nav-h) + 2rem) 1.5rem 4rem;
+  max-width: 720px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+.tt-privacy-inner {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2.5rem;
+  box-shadow: 0 8px 40px var(--shadow);
+}
+.tt-privacy-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: var(--text);
+  margin: 0 0 0.25rem;
+}
+.tt-privacy-updated {
+  font-size: 0.8rem;
+  color: var(--text3);
+  margin: 0 0 2rem;
+}
+.tt-privacy-section {
+  margin-bottom: 1.75rem;
+}
+.tt-privacy-section h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.5rem;
+}
+.tt-privacy-section p {
+  font-size: 0.9rem;
+  color: var(--text2);
+  line-height: 1.7;
+  margin: 0 0 0.75rem;
+  font-weight: 300;
+}
+.tt-privacy-section p:last-child {
+  margin-bottom: 0;
+}
+.tt-privacy-section code {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85em;
+  background: var(--code-bg);
+  color: var(--code-txt);
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+}
+.tt-privacy-back {
+  margin: 2rem 0 0;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+.tt-privacy-link {
+  font-size: 0.9rem;
+  color: var(--accent2);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s, color 0.2s;
+}
+.tt-privacy-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 /* ── SCROLL REVEAL ── */
 .tt-rev {
   opacity: 0;

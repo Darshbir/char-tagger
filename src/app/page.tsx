@@ -891,14 +891,19 @@ export default function Home() {
           <footer className="tt-footer tt-rev">
             <div className="tt-footer-logo">Trip<em>Tag</em></div>
             <div className="tt-footer-love">Made with love by people who care about your privacy</div>
-            <a
-              href="https://buymeacoffee.com/darshbir"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="tt-footer-link tt-footer-coffee"
-            >
-              ☕ Buy me a coffee
-            </a>
+            <div className="tt-footer-actions">
+              <a href="/privacy" className="tt-footer-link">
+                Privacy
+              </a>
+              <a
+                href="https://buymeacoffee.com/darshbir"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tt-footer-link tt-footer-coffee"
+              >
+                ☕ Buy me a coffee
+              </a>
+            </div>
           </footer>
         </div>
       </div>
