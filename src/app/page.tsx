@@ -242,8 +242,10 @@ export default function Home() {
     reviewedClusterIds,
     imageAssignments,
     error,
+    mlAvailable,
     runPipeline,
     reset,
+    startManualMode,
     setClusterName,
     markClustersReviewed,
     mergeClusters,
@@ -916,10 +918,38 @@ export default function Home() {
             </svg>
             Back
           </button>
+          {mlAvailable === false && !error && (
+            <div className="tt-ml-unavailable-banner" style={{ width: "100%", maxWidth: 460, marginBottom: "0.75rem" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ flexShrink: 0 }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" strokeWidth="2.5" />
+              </svg>
+              <span>AI models could not load (WebGL or network issue). Upload photos to use <strong>manual mode</strong> — you can still group and export them.</span>
+            </div>
+          )}
+
           {error && (
             <div className="tt-error-banner" style={{ width: "100%", maxWidth: 460, marginBottom: "0.75rem" }}>
               {error}
             </div>
+          )}
+
+          {error && mlAvailable === false && files.length > 0 && (
+            <button
+              type="button"
+              className="tt-btn-manual-mode"
+              style={{ width: "100%", maxWidth: 460, marginBottom: "0.75rem" }}
+              onClick={() => {
+                const payload = files.map((file, i) => ({ id: String(i), file }));
+                startManualMode(payload);
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+              </svg>
+              Continue in manual mode
+            </button>
           )}
 
           <DriveConnectionCard

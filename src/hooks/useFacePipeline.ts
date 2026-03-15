@@ -30,6 +30,8 @@ export interface FacePipelineState {
   clusters: ClusterSummary[];
   error: string | null;
   modelsLoaded: boolean;
+  /** null = not yet determined, true = models loaded OK, false = models failed to load */
+  mlAvailable: boolean | null;
 }
 
 const initialProgress: PipelineProgress = {
@@ -43,6 +45,7 @@ export function useFacePipeline() {
   const [imageIdsWithNoFaces, setImageIdsWithNoFaces] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [mlAvailable, setMlAvailable] = useState<boolean | null>(null);
 
   /** Persist custom cluster names across edit actions */
   const [clusterNames, setClusterNames] = useState<Map<number, string>>(new Map());
@@ -51,7 +54,14 @@ export function useFacePipeline() {
 
   /** Pre-warm the default detector on mount so first run is faster */
   useEffect(() => {
-    loadDetectorModels("retinaface").then(() => setModelsLoaded(true)).catch(() => { /* ignore pre-warm failures */ });
+    loadDetectorModels("retinaface")
+      .then(() => {
+        setModelsLoaded(true);
+        setMlAvailable(true);
+      })
+      .catch(() => {
+        setMlAvailable(false);
+      });
   }, []);
 
   const runPipeline = useCallback(
@@ -67,10 +77,12 @@ export function useFacePipeline() {
       try {
         await loadDetectorModels(detector);
         setModelsLoaded(true);
+        setMlAvailable(true);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to load models";
         setProgress({ phase: "error", message: msg });
         setError(msg);
+        setMlAvailable(false);
         return;
       }
 
@@ -138,6 +150,38 @@ export function useFacePipeline() {
     setReviewedClusterIds(new Set());
     setImageAssignments(new Map());
     setError(null);
+    setMlAvailable(null);
+  }, []);
+
+  /**
+   * Activate manual-tagging mode when ML models are unavailable.
+   * Places all images in a default "Group 1" cluster so users can
+   * rename and reassign photos via the existing drag-and-drop UI.
+   */
+  const startManualMode = useCallback((files: Array<{ id: string; file: File }>) => {
+    if (files.length === 0) return;
+    const allIds = files.map((f) => f.id);
+    const manualCluster: ClusterSummary = {
+      clusterId: 1,
+      name: "Group 1",
+      detectionIds: [],
+    };
+    const assignments = new Map<string, number>();
+    allIds.forEach((id) => assignments.set(id, 1));
+    const names = new Map<number, string>();
+    names.set(1, "Group 1");
+
+    setTagged([]);
+    setClusters([manualCluster]);
+    setImageIdsWithNoFaces(allIds);
+    setImageAssignments(assignments);
+    setClusterNames(names);
+    setReviewedClusterIds(new Set());
+    setError(null);
+    setProgress({
+      phase: "done",
+      message: "Manual mode active. Rename groups and assign photos via drag-and-drop.",
+    });
   }, []);
 
   const setClusterName = useCallback((clusterId: number, name: string) => {
@@ -332,8 +376,10 @@ export function useFacePipeline() {
     imageAssignments,
     error,
     modelsLoaded,
+    mlAvailable,
     runPipeline,
     reset,
+    startManualMode,
     setClusterName,
     markClustersReviewed,
     mergeClusters,

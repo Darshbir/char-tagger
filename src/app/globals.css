@@ -1,4 +1,4 @@
-﻿@tailwind base;
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -1403,6 +1403,38 @@ body::before {
   margin-bottom: 1rem;
 }
 [data-theme="dark"] .tt-error-banner { color: #fca5a5; background: color-mix(in srgb, #DC2626 10%, var(--surface)); }
+
+.tt-ml-unavailable-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  background: color-mix(in srgb, var(--accent2) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent2) 35%, transparent);
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  font-size: 0.83rem;
+  color: var(--text2);
+  line-height: 1.5;
+}
+.tt-ml-unavailable-banner strong { color: var(--accent); }
+
+.tt-btn-manual-mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  padding: 0.65rem 1.2rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+.tt-btn-manual-mode:hover { background: var(--bg3); border-color: var(--accent3); }
 
 /* ── PERSONS GRID ── */
 .tt-persons-grid {
