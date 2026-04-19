@@ -1,6 +1,6 @@
 # TripTag — Sort trip photos by person, privately
 
-Tag recurring people across photos and organise them in Google Drive. Every photo is processed in your browser — we never see your images.
+Tag recurring people across photos and organise them in Google Drive. Every photo is processed in your browser, we never see your images. Try it out [here](https://www.triptag.vercel.app).
 
 ## Setup
 
